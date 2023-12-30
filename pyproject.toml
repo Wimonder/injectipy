@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "injectipy"
+version = "0.1.0"
+description = ""
+authors = ["Wim Onderbeke <wim.onderbeke@hotmail.com>"]
+readme = "README.md"
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.3"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
