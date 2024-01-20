@@ -1,0 +1,96 @@
+site_name: Injectipy Documentation
+site_description: A lightweight, thread-safe dependency injection library for Python
+site_author: Wim Onderbeke
+site_url: https://wimonder.github.io/injectipy/
+
+repo_name: Wimonder/injectipy
+repo_url: https://github.com/Wimonder/injectipy
+edit_uri: edit/main/docs/
+
+copyright: Copyright &copy; 2024 Wim Onderbeke
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.tabs.link
+    - content.code.copy
+    - content.code.annotate
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+  - gen-files:
+      scripts:
+        - scripts/generate_api_docs.py
+  - literate-nav:
+      nav_file: SUMMARY.md
+  - section-index
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            members_order: source
+            separate_signature: true
+            show_signature_annotations: true
+            signature_crossrefs: true
+            merge_init_into_class: true
+            show_source: false
+  - git-revision-date-localized:
+      type: date
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: installation.md
+    - Quick Start: quickstart.md
+    - Basic Usage: basic-usage.md
+  - User Guide:
+    - Core Concepts: concepts.md
+    - Advanced Patterns: advanced-patterns.md
+    - Testing: testing.md
+    - Thread Safety: thread-safety.md
+    - Performance: performance.md
+  - Examples:
+    - Basic Examples: examples/basic.md
+    - Advanced Examples: examples/advanced.md
+    - Testing Examples: examples/testing.md
+  - API Reference: reference/
+  - Development:
+    - Contributing: contributing.md
+    - Changelog: changelog.md

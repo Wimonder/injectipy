@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+
+    - name: Install dependencies
+      run: poetry install --no-interaction
+
+    - name: Run linting
+      run: poetry run ruff check .
+
+    - name: Run type checking
+      run: poetry run mypy injectipy/
+
+    - name: Run tests
+      run: poetry run pytest --cov=injectipy
+
+    - name: Test examples
+      run: |
+        poetry run python examples/basic_usage.py
+        poetry run python examples/advanced_patterns.py

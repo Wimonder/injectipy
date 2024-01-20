@@ -1,0 +1,108 @@
+[tool.poetry]
+name = "injectipy"
+version = "0.1.0"
+description = "A dependency injection library for Python that uses explicit scopes instead of global state"
+authors = ["Wim Onderbeke <wim.onderbeke@hotmail.com>"]
+readme = "README.md"
+license = "MIT"
+keywords = ["dependency injection"]
+homepage = "https://github.com/Wimonder/injectipy"
+repository = "https://github.com/Wimonder/injectipy"
+documentation = "https://github.com/Wimonder/injectipy"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.3"
+pytest-cov = "^4.1.0"
+black = "^23.12.1"
+mypy = "^1.8.0"
+ruff = "^0.1.8"
+pre-commit = "^3.6.0"
+pytest-xdist = "^3.8.0"
+pytest-benchmark = "<5.0"
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+strict_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+[tool.black]
+line-length = 120
+target-version = ['py311']
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--cov=injectipy",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-report=xml",
+    "--tb=short",
+    "--durations=10",
+    "-v"
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "performance: marks tests as performance/stress tests",
+    "edge_case: marks tests for edge cases and error conditions",
+    "integration: marks tests as integration tests",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+select = [
+    "E",
+    "W",
+    "F",
+    "I",
+    "B",
+    "C4",
+    "UP",
+    "FA",
+]
+ignore = [
+    "E501",
+]
+
+[tool.ruff.per-file-ignores]
+"tests/*" = ["B018"]
+
+[tool.coverage.run]
+source = ["injectipy"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+]
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
