@@ -7,8 +7,8 @@ InjectKeyType: TypeAlias = Union[str, Type]
 
 
 class _TypingMeta(type):
-    def __getitem__(cls, item) -> Any:
-        return cls(item)  # type: ignore
+    def __getitem__(cls, item: Any) -> Any:
+        return cls(item)
 
 
 class _Inject(Generic[T]):

@@ -14,7 +14,7 @@ def inject(fn: F) -> F:
         return fn
 
     @functools.wraps(fn)
-    def wrapper(*args, **kwargs) -> Any:
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
         new_defaults = []
         for default in original_defaults:
             if isinstance(default, Inject):

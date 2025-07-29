@@ -7,7 +7,9 @@ from injectipy.store import InjectipyStore
 
 @pytest.fixture
 def store() -> InjectipyStore:
-    return InjectipyStore()
+    store_instance = InjectipyStore()
+    store_instance._reset_for_testing()
+    return store_instance
 
 
 def test_inject_function(store: InjectipyStore) -> None:

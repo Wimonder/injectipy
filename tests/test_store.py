@@ -11,7 +11,9 @@ def test_create_store() -> None:
 
 @pytest.fixture
 def store() -> InjectipyStore:
-    return InjectipyStore()
+    store_instance = InjectipyStore()
+    store_instance._reset_for_testing()
+    return store_instance
 
 
 @pytest.mark.parametrize(
@@ -107,8 +109,12 @@ def test_register_resolver_with_unregistered_parameters(
     def resolver(foo: str, bar: str) -> str:
         return f"{foo} {bar}"
 
-    with pytest.raises(ValueError):
-        store.register_resolver("resolved", resolver)
+    # Registration should succeed (forward references allowed)
+    store.register_resolver("resolved", resolver)
+    
+    # But resolution should fail due to missing dependencies
+    with pytest.raises(TypeError, match="missing .* required positional arguments"):
+        store["resolved"]
 
 
 def test_register_evaluate_once_resolver(

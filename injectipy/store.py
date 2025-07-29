@@ -25,13 +25,13 @@ T = TypeVar("T")
 
 
 class InjectipyStore:
-    _instance: "InjectipyStore" = None
+    _instance: "InjectipyStore | None" = None
     _lock: threading.Lock = threading.Lock()
     _registry: dict[StoreKeyType, _StoreValueType]
     _cache: dict[StoreKeyType, Any]
     _registry_lock: threading.RLock
 
-    def __new__(cls):
+    def __new__(cls) -> "InjectipyStore":
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
@@ -39,7 +39,7 @@ class InjectipyStore:
                     cls._instance._initialized = False
         return cls._instance
 
-    def __init__(self):
+    def __init__(self) -> None:
         if not getattr(self, '_initialized', False):
             self._registry = {}
             self._cache = {}
@@ -52,7 +52,7 @@ class InjectipyStore:
         resolver: StoreResolverType,
         *,
         evaluate_once: bool = False,
-    ):
+    ) -> None:
         with self._registry_lock:
             self._raise_if_key_already_registered(key)
             self._validate_resolver_signature(key, resolver)
@@ -62,7 +62,7 @@ class InjectipyStore:
             
             self._registry[key] = _StoreResolverWithArgs(resolver, evaluate_once)
 
-    def _validate_resolver_signature(self, resolver_key: StoreKeyType, resolver: StoreResolverType):
+    def _validate_resolver_signature(self, resolver_key: StoreKeyType, resolver: StoreResolverType) -> None:
         resolver_signature = inspect.signature(resolver)
         resolver_parameters = resolver_signature.parameters
         for param in resolver_parameters.values():
@@ -77,17 +77,17 @@ class InjectipyStore:
             # Note: We now allow forward references - dependencies will be validated at resolution time
             # This allows us to register resolvers in any order and detect circular dependencies
 
-    def register_value(self, key: StoreKeyType, value: Any):
+    def register_value(self, key: StoreKeyType, value: Any) -> None:
         with self._registry_lock:
             self._raise_if_key_already_registered(key)
             self._registry[key] = value
             self._cache[key] = value
 
-    def _raise_if_key_already_registered(self, key: StoreKeyType):
+    def _raise_if_key_already_registered(self, key: StoreKeyType) -> None:
         if key in self._registry:
             raise ValueError(f"Key {key} already registered")
 
-    def _check_circular_dependencies(self, new_key: StoreKeyType, new_resolver: StoreResolverType):
+    def _check_circular_dependencies(self, new_key: StoreKeyType, new_resolver: StoreResolverType) -> None:
         """Check if adding this resolver would create a circular dependency."""
         # Get dependencies of the new resolver
         new_dependencies = self._get_resolver_dependencies(new_resolver)
@@ -188,6 +188,12 @@ class InjectipyStore:
                     pass
 
         return resolver(**resolver_args)
+
+    def _reset_for_testing(self) -> None:
+        """Reset the store state for testing purposes only."""
+        with self._registry_lock:
+            self._registry.clear()
+            self._cache.clear()
 
 
 injectipy_store = InjectipyStore()
