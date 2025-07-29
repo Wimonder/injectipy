@@ -8,13 +8,13 @@ A lightweight, thread-safe dependency injection library for Python with support 
 
 ## Features
 
-- = **Thread-safe**: Singleton pattern with proper locking for concurrent access
-- = **Circular dependency detection**: Prevents runtime errors with dependency cycle analysis
-- <÷ **Type-safe**: Full mypy compatibility with strict type checking
-- =æ **Forward references**: Register dependencies in any order
-- <¯ **Simple API**: Clean decorator-based injection with minimal boilerplate
-- ¡ **Lazy evaluation**: Dependencies resolved only when needed
-- >ê **Test-friendly**: Built-in test isolation support
+- **Thread-safe**: Singleton pattern with proper locking for concurrent access
+- **Circular dependency detection**: Prevents runtime errors with dependency cycle analysis
+-  **Type-safe**: Full mypy compatibility with strict type checking
+- **Forward references**: Register dependencies in any order
+- **Simple API**: Clean decorator-based injection with minimal boilerplate
+- **Lazy evaluation**: Dependencies resolved only when needed
+- **Test-friendly**: Built-in test isolation support
 
 ## Installation
 
