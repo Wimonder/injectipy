@@ -1,10 +1,11 @@
 *.pyc
+__pycache__
 
 # Packages
 *.egg
 !/tests/**/*.egg
 /*.egg-info
-/dist/*
+dist
 build
 _build
 .cache
@@ -18,9 +19,9 @@ pip-log.txt
 .pytest_cache
 
 .DS_Store
-.idea/*
+.idea
 .python-version
-.vscode/*
+.vscode
 
 /test.py
 /test_*.*
@@ -29,12 +30,10 @@ pip-log.txt
 MANIFEST.in
 /setup.py
 /docs/site/*
-/tests/fixtures/simple_project/setup.py
-/tests/fixtures/project_with_extras/setup.py
 .mypy_cache
 
 .venv
-/releases/*
+releases
 pip-wheel-metadata
 /poetry.toml
 
