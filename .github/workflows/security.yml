@@ -20,7 +20,7 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Dependency Review
-      uses: actions/dependency-review-action@v3
+      uses: actions/dependency-review-action@v4
       with:
         fail-on-severity: moderate
         allow-ghsas: GHSA-xxxx-xxxx-xxxx  # Allow specific advisories if needed
@@ -34,7 +34,7 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Set up Python 3.11
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: "3.11"
 
@@ -63,7 +63,7 @@ jobs:
         poetry run safety check -r requirements-dev.txt --json --output safety-dev.json || true
 
     - name: Upload Safety results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: safety-reports
         path: |
@@ -77,7 +77,7 @@ jobs:
         generateSarif: "1"
 
     - name: Upload Semgrep results to GitHub Security tab
-      uses: github/codeql-action/upload-sarif@v2
+      uses: github/codeql-action/upload-sarif@v3
       if: always()
       with:
         sarif_file: semgrep.sarif
@@ -107,7 +107,7 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Set up Python 3.11
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: "3.11"
 
@@ -128,7 +128,7 @@ jobs:
         poetry run pip-licenses --fail-on="GPL v3"  # Fail on copyleft licenses
 
     - name: Upload license report
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: license-report
         path: licenses.json
