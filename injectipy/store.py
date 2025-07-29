@@ -192,7 +192,7 @@ class InjectipyStore:
 
         return False
 
-    def __setitem__(self, key: Any) -> None:
+    def __setitem__(self, key: Any, value: Any) -> None:
         raise NotImplementedError("Use register_resolver or register_value instead")  # noqa E501
 
     @overload
