@@ -57,7 +57,7 @@ class UserService:
     @inject
     def __init__(self, db_connection: str = Inject["db_connection"]):
         self.db = db_connection
-    
+
     def get_user(self, user_id: int):
         return f"User {user_id} from {self.db}"
 
@@ -106,8 +106,8 @@ def expensive_resource():
 
 # Register with evaluate_once=True for singleton behavior
 injectipy_store.register_resolver(
-    "expensive_resource", 
-    expensive_resource, 
+    "expensive_resource",
+    expensive_resource,
     evaluate_once=True
 )
 
@@ -238,11 +238,11 @@ def reset_store():
 
 def test_dependency_injection():
     injectipy_store.register_value("test_value", "hello")
-    
+
     @inject
     def test_function(value: str = Inject["test_value"]):
         return value
-    
+
     assert test_function() == "hello"
 
 def test_isolation():
@@ -284,7 +284,7 @@ for thread in threads:
 #### `@inject` decorator
 Decorates functions/methods to enable automatic dependency injection.
 
-#### `Inject[key]` 
+#### `Inject[key]`
 Type-safe dependency marker for function parameters.
 
 #### `injectipy_store`

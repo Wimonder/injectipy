@@ -111,7 +111,7 @@ def test_register_resolver_with_unregistered_parameters(
 
     # Registration should succeed (forward references allowed)
     store.register_resolver("resolved", resolver)
-    
+
     # But resolution should fail due to missing dependencies
     with pytest.raises(TypeError, match="missing .* required positional arguments"):
         store["resolved"]

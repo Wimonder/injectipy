@@ -1,14 +1,14 @@
 import inspect
 import threading
 from dataclasses import dataclass
-from typing import Any, Callable, Type, TypeVar, Union, overload
+from typing import Any, Callable, TypeVar, Union, overload
 
 from typing_extensions import TypeAlias
 
 from injectipy.models.inject import Inject
 
 _ParamNameType: TypeAlias = str
-_ParamType: TypeAlias = Type
+_ParamType: TypeAlias = type
 StoreKeyType = Union[_ParamNameType, _ParamType]
 StoreResolverType = Callable[..., Any]
 
@@ -26,17 +26,17 @@ T = TypeVar("T")
 
 class InjectipyStore:
     """Thread-safe singleton dependency injection store.
-    
+
     This class manages dependency registration and resolution with support for:
     - Thread-safe singleton pattern with proper locking
     - Circular dependency detection
     - Lazy evaluation with optional caching
     - Type-safe dependency resolution
-    
+
     The store supports two types of dependencies:
     1. Values: Static objects registered with register_value()
     2. Resolvers: Factory functions registered with register_resolver()
-    
+
     Example:
         >>> store = InjectipyStore()
         >>> store.register_value("config", {"debug": True})
@@ -44,6 +44,7 @@ class InjectipyStore:
         >>> config = store["config"]  # {"debug": True}
         >>> logger = store["logger"]  # "Logger instance"
     """
+
     _instance: "InjectipyStore | None" = None
     _lock: threading.Lock = threading.Lock()
     _registry: dict[StoreKeyType, _StoreValueType]
@@ -54,12 +55,12 @@ class InjectipyStore:
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
-                    cls._instance = super(InjectipyStore, cls).__new__(cls)
+                    cls._instance = super().__new__(cls)
                     cls._instance._initialized = False
         return cls._instance
 
     def __init__(self) -> None:
-        if not getattr(self, '_initialized', False):
+        if not getattr(self, "_initialized", False):
             self._registry = {}
             self._cache = {}
             self._registry_lock = threading.RLock()
@@ -73,21 +74,21 @@ class InjectipyStore:
         evaluate_once: bool = False,
     ) -> None:
         """Register a factory function as a dependency resolver.
-        
+
         The resolver function will be called to create the dependency value when
         requested. Dependencies can be injected into the resolver using parameter
         names or Inject[key] annotations.
-        
+
         Args:
             key: Unique identifier for this dependency
             resolver: Factory function that creates the dependency
             evaluate_once: If True, cache the result after first evaluation
                          (singleton pattern). Defaults to False.
-        
+
         Raises:
             ValueError: If key is already registered or circular dependency detected
             TypeError: If resolver has unsupported parameter types
-            
+
         Example:
             >>> def create_database(host: str = Inject["db_host"]):
             ...     return f"Database({host})"
@@ -97,10 +98,10 @@ class InjectipyStore:
         with self._registry_lock:
             self._raise_if_key_already_registered(key)
             self._validate_resolver_signature(key, resolver)
-            
+
             # Check for circular dependencies
             self._check_circular_dependencies(key, resolver)
-            
+
             self._registry[key] = _StoreResolverWithArgs(resolver, evaluate_once)
 
     def _validate_resolver_signature(self, resolver_key: StoreKeyType, resolver: StoreResolverType) -> None:
@@ -120,17 +121,17 @@ class InjectipyStore:
 
     def register_value(self, key: StoreKeyType, value: Any) -> None:
         """Register a static value as a dependency.
-        
+
         The value will be returned as-is when requested from the store.
         This is useful for configuration values, constants, or pre-built objects.
-        
+
         Args:
             key: Unique identifier for this dependency
             value: The static value to register
-            
+
         Raises:
             ValueError: If key is already registered
-            
+
         Example:
             >>> store.register_value("api_key", "secret123")
             >>> store.register_value("database", DatabaseConnection())
@@ -149,40 +150,38 @@ class InjectipyStore:
         """Check if adding this resolver would create a circular dependency."""
         # Get dependencies of the new resolver
         new_dependencies = self._get_resolver_dependencies(new_resolver)
-        
+
         # For each dependency, check if it eventually depends on new_key
         for dep_key in new_dependencies:
             if self._has_dependency_path(dep_key, new_key, set()):
-                raise ValueError(
-                    f"Circular dependency detected: {new_key} -> {dep_key} -> ... -> {new_key}"
-                )
+                raise ValueError(f"Circular dependency detected: {new_key} -> {dep_key} -> ... -> {new_key}")
 
     def _get_resolver_dependencies(self, resolver: StoreResolverType) -> set[StoreKeyType]:
         """Extract all dependencies from a resolver function."""
         dependencies = set()
         resolver_signature = inspect.signature(resolver)
-        
+
         for param_name, param in resolver_signature.parameters.items():
             if param.default is not inspect.Parameter.empty and isinstance(param.default, Inject):
                 dependencies.add(param.default.get_inject_key())
             else:
                 dependencies.add(param_name)
-        
+
         return dependencies
 
     def _has_dependency_path(self, from_key: StoreKeyType, to_key: StoreKeyType, visited: set[StoreKeyType]) -> bool:
         """Check if there's a dependency path from from_key to to_key."""
         if from_key == to_key:
             return True
-        
+
         if from_key in visited:
             return False  # Already checked this path
-        
+
         if from_key not in self._registry:
             return False  # Key doesn't exist, no dependency path
-        
+
         visited.add(from_key)
-        
+
         # Get the dependencies of from_key
         registry_entry = self._registry[from_key]
         if isinstance(registry_entry, _StoreResolverWithArgs):
@@ -190,7 +189,7 @@ class InjectipyStore:
             for dep_key in dependencies:
                 if self._has_dependency_path(dep_key, to_key, visited.copy()):
                     return True
-        
+
         return False
 
     def __setitem__(self, key: Any) -> None:
@@ -201,27 +200,27 @@ class InjectipyStore:
         ...
 
     @overload
-    def __getitem__(self, key: Type[T]) -> T:
+    def __getitem__(self, key: type[T]) -> T:
         ...
 
     def __getitem__(self, key: Any) -> Any:
         """Resolve and return a dependency by key.
-        
+
         This method resolves dependencies on-demand:
-        - For registered values: returns the value directly  
+        - For registered values: returns the value directly
         - For resolvers: calls the factory function with injected dependencies
         - For cached resolvers (evaluate_once=True): returns cached result
-        
+
         Args:
             key: The dependency key to resolve
-            
+
         Returns:
             The resolved dependency value
-            
+
         Raises:
             KeyError: If the key is not registered in the store
             TypeError: If resolver function is missing required arguments
-            
+
         Example:
             >>> store.register_value("config", {"debug": True})
             >>> config = store["config"]  # {"debug": True}
@@ -270,14 +269,14 @@ class InjectipyStore:
 
     def _reset_for_testing(self) -> None:
         """Reset the store state for testing purposes only.
-        
+
         This method clears all registered dependencies and cached values.
         It should only be used in test environments to ensure test isolation.
-        
+
         Warning:
             This method is intended for testing only and should not be used
             in production code as it affects the global singleton state.
-            
+
         Example:
             >>> # In pytest fixture
             >>> @pytest.fixture(autouse=True)

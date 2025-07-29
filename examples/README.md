@@ -99,7 +99,7 @@ class ExpensiveResource:
 
 # Register with evaluate_once=True for singleton behavior
 injectipy_store.register_resolver(
-    "resource", 
+    "resource",
     ExpensiveResource,
     evaluate_once=True
 )
@@ -134,7 +134,7 @@ All examples are self-contained and can be run directly:
 ```bash
 # Run individual examples
 python examples/basic_usage.py
-python examples/advanced_patterns.py  
+python examples/advanced_patterns.py
 python examples/testing_patterns.py
 
 # Or run all examples
