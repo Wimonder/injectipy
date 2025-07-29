@@ -25,6 +25,25 @@ T = TypeVar("T")
 
 
 class InjectipyStore:
+    """Thread-safe singleton dependency injection store.
+    
+    This class manages dependency registration and resolution with support for:
+    - Thread-safe singleton pattern with proper locking
+    - Circular dependency detection
+    - Lazy evaluation with optional caching
+    - Type-safe dependency resolution
+    
+    The store supports two types of dependencies:
+    1. Values: Static objects registered with register_value()
+    2. Resolvers: Factory functions registered with register_resolver()
+    
+    Example:
+        >>> store = InjectipyStore()
+        >>> store.register_value("config", {"debug": True})
+        >>> store.register_resolver("logger", lambda: "Logger instance")
+        >>> config = store["config"]  # {"debug": True}
+        >>> logger = store["logger"]  # "Logger instance"
+    """
     _instance: "InjectipyStore | None" = None
     _lock: threading.Lock = threading.Lock()
     _registry: dict[StoreKeyType, _StoreValueType]
@@ -53,6 +72,28 @@ class InjectipyStore:
         *,
         evaluate_once: bool = False,
     ) -> None:
+        """Register a factory function as a dependency resolver.
+        
+        The resolver function will be called to create the dependency value when
+        requested. Dependencies can be injected into the resolver using parameter
+        names or Inject[key] annotations.
+        
+        Args:
+            key: Unique identifier for this dependency
+            resolver: Factory function that creates the dependency
+            evaluate_once: If True, cache the result after first evaluation
+                         (singleton pattern). Defaults to False.
+        
+        Raises:
+            ValueError: If key is already registered or circular dependency detected
+            TypeError: If resolver has unsupported parameter types
+            
+        Example:
+            >>> def create_database(host: str = Inject["db_host"]):
+            ...     return f"Database({host})"
+            >>> store.register_resolver("database", create_database)
+            >>> store.register_resolver("cache", lambda: "Redis", evaluate_once=True)
+        """
         with self._registry_lock:
             self._raise_if_key_already_registered(key)
             self._validate_resolver_signature(key, resolver)
@@ -78,6 +119,23 @@ class InjectipyStore:
             # This allows us to register resolvers in any order and detect circular dependencies
 
     def register_value(self, key: StoreKeyType, value: Any) -> None:
+        """Register a static value as a dependency.
+        
+        The value will be returned as-is when requested from the store.
+        This is useful for configuration values, constants, or pre-built objects.
+        
+        Args:
+            key: Unique identifier for this dependency
+            value: The static value to register
+            
+        Raises:
+            ValueError: If key is already registered
+            
+        Example:
+            >>> store.register_value("api_key", "secret123")
+            >>> store.register_value("database", DatabaseConnection())
+            >>> api_key = store["api_key"]  # "secret123"
+        """
         with self._registry_lock:
             self._raise_if_key_already_registered(key)
             self._registry[key] = value
@@ -147,6 +205,27 @@ class InjectipyStore:
         ...
 
     def __getitem__(self, key: Any) -> Any:
+        """Resolve and return a dependency by key.
+        
+        This method resolves dependencies on-demand:
+        - For registered values: returns the value directly  
+        - For resolvers: calls the factory function with injected dependencies
+        - For cached resolvers (evaluate_once=True): returns cached result
+        
+        Args:
+            key: The dependency key to resolve
+            
+        Returns:
+            The resolved dependency value
+            
+        Raises:
+            KeyError: If the key is not registered in the store
+            TypeError: If resolver function is missing required arguments
+            
+        Example:
+            >>> store.register_value("config", {"debug": True})
+            >>> config = store["config"]  # {"debug": True}
+        """
         with self._registry_lock:
             if key in self._cache:
                 return self._cache[key]
@@ -190,7 +269,21 @@ class InjectipyStore:
         return resolver(**resolver_args)
 
     def _reset_for_testing(self) -> None:
-        """Reset the store state for testing purposes only."""
+        """Reset the store state for testing purposes only.
+        
+        This method clears all registered dependencies and cached values.
+        It should only be used in test environments to ensure test isolation.
+        
+        Warning:
+            This method is intended for testing only and should not be used
+            in production code as it affects the global singleton state.
+            
+        Example:
+            >>> # In pytest fixture
+            >>> @pytest.fixture(autouse=True)
+            >>> def reset_store():
+            ...     injectipy_store._reset_for_testing()
+        """
         with self._registry_lock:
             self._registry.clear()
             self._cache.clear()
