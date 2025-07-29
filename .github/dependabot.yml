@@ -1,0 +1,74 @@
+version: 2
+
+updates:
+  # Python dependencies
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "Wimonder"  # Replace with actual maintainer usernames
+    assignees:
+      - "Wimonder"
+    commit-message:
+      prefix: "deps"
+      prefix-development: "deps-dev"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "python"
+    ignore:
+      # Ignore major version updates for stable dependencies
+      - dependency-name: "pytest"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "mypy"
+        update-types: ["version-update:semver-major"]
+    groups:
+      # Group test dependencies together
+      test-dependencies:
+        patterns:
+          - "pytest*"
+          - "*test*"
+          - "coverage"
+          - "tox"
+      # Group development tools together
+      dev-tools:
+        patterns:
+          - "black"
+          - "ruff"
+          - "mypy"
+          - "pre-commit"
+          - "bandit"
+      # Group typing dependencies
+      typing-dependencies:
+        patterns:
+          - "typing*"
+          - "mypy*"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "10:00"
+    open-pull-requests-limit: 3
+    reviewers:
+      - "Wimonder"
+    assignees:
+      - "Wimonder"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "ci"
+    groups:
+      # Group GitHub Actions updates
+      github-actions:
+        patterns:
+          - "*"

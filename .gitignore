@@ -19,6 +19,7 @@ pip-log.txt
 .pytest_cache
 htmlcov
 coverage.*
+.benchmarks
 
 .DS_Store
 .idea

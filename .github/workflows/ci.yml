@@ -1,0 +1,249 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run weekly on Sundays at 2 AM UTC
+    - cron: '0 2 * * 0'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test Python ${{ matrix.python-version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: 1.7.1
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+        installer-parallel: true
+
+    - name: Load cached venv
+      id: cached-poetry-dependencies
+      uses: actions/cache@v3
+      with:
+        path: .venv
+        key: venv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('**/poetry.lock') }}
+
+    - name: Install dependencies
+      if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+      run: poetry install --no-interaction --no-root
+
+    - name: Install project
+      run: poetry install --no-interaction
+
+    - name: Run linting (ruff)
+      run: poetry run ruff check .
+
+    - name: Run formatting check (black)
+      run: poetry run black --check .
+
+    - name: Run type checking (mypy)
+      run: poetry run mypy injectipy/
+
+    - name: Run security check (bandit)
+      run: poetry run bandit -r injectipy/
+
+    - name: Run tests with coverage
+      run: |
+        poetry run pytest \
+          --cov=injectipy \
+          --cov-report=xml \
+          --cov-report=term-missing \
+          --cov-fail-under=90 \
+          --junitxml=pytest.xml
+
+    - name: Upload coverage to Codecov
+      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: true
+
+    - name: Upload test results
+      uses: dorny/test-reporter@v1
+      if: success() || failure()
+      with:
+        name: Test Results (Python ${{ matrix.python-version }}, ${{ matrix.os }})
+        path: pytest.xml
+        reporter: java-junit
+
+  performance:
+    name: Performance Tests
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: 1.7.1
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+
+    - name: Install dependencies
+      run: poetry install --no-interaction
+
+    - name: Run performance tests
+      run: |
+        poetry run pytest \
+          -m performance \
+          --benchmark-json=benchmark.json \
+          --benchmark-compare-fail=mean:10% \
+          --benchmark-sort=mean \
+          -v
+
+    - name: Store benchmark result
+      uses: benchmark-action/github-action-benchmark@v1
+      if: github.ref == 'refs/heads/main'
+      with:
+        name: Python Benchmark
+        tool: 'pytest'
+        output-file-path: benchmark.json
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        auto-push: true
+        alert-threshold: '200%'
+        comment-on-alert: true
+        fail-on-alert: true
+
+  security:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: 1.7.1
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+
+    - name: Install dependencies
+      run: poetry install --no-interaction
+
+    - name: Run safety check on dependencies
+      run: |
+        poetry run pip install safety
+        poetry export -f requirements.txt --output requirements.txt --without-hashes
+        poetry run safety check -r requirements.txt
+
+    - name: Run CodeQL Analysis
+      uses: github/codeql-action/init@v2
+      with:
+        languages: python
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v2
+
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: 1.7.1
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+
+    - name: Install dependencies
+      run: poetry install --no-interaction
+
+    - name: Test examples execution
+      run: |
+        poetry run python examples/basic_usage.py
+        poetry run python examples/advanced_patterns.py
+        poetry run python examples/testing_patterns.py
+
+    - name: Test package import
+      run: |
+        poetry run python -c "import injectipy; print('Import successful')"
+        poetry run python -c "from injectipy import inject, Inject, InjectipyStore; print('Named imports successful')"
+
+    - name: Test wheel building
+      run: |
+        poetry build
+        pip install dist/*.whl
+        python -c "import injectipy; print('Wheel install successful')"
+
+  quality-gate:
+    name: Quality Gate
+    runs-on: ubuntu-latest
+    needs: [test, performance, security, integration]
+    if: always()
+
+    steps:
+    - name: Check job results
+      run: |
+        echo "Test job result: ${{ needs.test.result }}"
+        echo "Performance job result: ${{ needs.performance.result }}"
+        echo "Security job result: ${{ needs.security.result }}"
+        echo "Integration job result: ${{ needs.integration.result }}"
+
+        if [ "${{ needs.test.result }}" != "success" ]; then
+          echo "❌ Test job failed"
+          exit 1
+        fi
+
+        if [ "${{ needs.performance.result }}" != "success" ] && [ "${{ needs.performance.result }}" != "skipped" ]; then
+          echo "❌ Performance job failed"
+          exit 1
+        fi
+
+        if [ "${{ needs.security.result }}" != "success" ]; then
+          echo "❌ Security job failed"
+          exit 1
+        fi
+
+        if [ "${{ needs.integration.result }}" != "success" ]; then
+          echo "❌ Integration job failed"
+          exit 1
+        fi
+
+        echo "✅ All quality gates passed!"
