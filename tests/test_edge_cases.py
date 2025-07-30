@@ -49,22 +49,20 @@ def test_overwrite_cache_with_evaluate_once(store: InjectipyStore):
     assert result1 is result2
 
 
-def test_resolver_with_partial_inject_dependencies(store: InjectipyStore):
-    """Test resolver with mix of Inject and parameter name dependencies."""
-    # Register some dependencies
+def test_resolver_with_inject_and_defaults(store: InjectipyStore):
+    """Test resolver with Inject dependencies and default parameters."""
+    # Register dependencies
     store.register_value("explicit_dep", "explicit_value")
-    store.register_value("param_dep", "param_value")
 
     def resolver(
         explicit: str = Inject["explicit_dep"],
-        param_dep: str = "param_default",  # This should be resolved by parameter name with default
         missing_param: str = "default_value",  # This has a default
     ):
-        return f"{explicit}-{param_dep}-{missing_param}"
+        return f"{explicit}-{missing_param}"
 
     store.register_resolver("mixed", resolver)
     result = store["mixed"]
-    assert result == "explicit_value-param_value-default_value"
+    assert result == "explicit_value-default_value"
 
 
 def test_resolver_with_missing_inject_dependency(store: InjectipyStore):
@@ -76,7 +74,6 @@ def test_resolver_with_missing_inject_dependency(store: InjectipyStore):
     store.register_resolver("failing", resolver)
 
     # The resolver will get the Inject object itself since the key doesn't exist
-    # and there's no parameter name fallback
     result = store["failing"]
     assert "resolved: <injectipy.models.inject.Inject object" in result
 

@@ -11,7 +11,6 @@ Demonstrates fundamental Injectipy patterns:
 - **Singleton Pattern**: Create singleton dependencies with `evaluate_once=True`
 - **Class Constructor Injection**: Inject dependencies into class constructors
 - **Type-based Keys**: Use Python types as dependency keys
-- **Parameter Name Injection**: Automatic injection by matching parameter names
 
 **Run it:**
 ```bash

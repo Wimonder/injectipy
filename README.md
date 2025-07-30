@@ -146,23 +146,6 @@ def get_users(db: DatabaseProtocol = Inject["database"]) -> list:
 users: list = get_users()
 ```
 
-### Dependency by Parameter Name
-
-You can also inject dependencies by matching parameter names:
-
-```python
-from injectipy import inject, injectipy_store
-
-# Register a dependency
-injectipy_store.register_value("logger", "MyLogger")
-
-# Parameter name 'logger' automatically matches the registered key
-@inject
-def process_data(data: str, logger: str) -> str:
-    return f"Processing {data} with {logger}"
-
-result = process_data("input")  # logger automatically injected
-```
 
 ### Multiple Stores
 

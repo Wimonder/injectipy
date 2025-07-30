@@ -49,17 +49,6 @@ def test_register_simple_resolver(store: InjectipyStore, key, resolver) -> None:
     assert result == resolver()
 
 
-def test_register_resolver_with_injected_args_by_param_name(
-    store: InjectipyStore,
-) -> None:
-    def resolver(foo: str, bar: str) -> str:
-        return f"{foo} {bar}"
-
-    store.register_value("foo", "hello")
-    store.register_value("bar", "world")
-    store.register_resolver("resolved", resolver)
-
-
 def test_register_resolver_with_injected_args_by_inject(
     store: InjectipyStore,
 ) -> None:
@@ -103,18 +92,18 @@ def test_register_resolver_with_wrong_parameter_kinds(store: InjectipyStore, key
         store.register_resolver(key, resolver)
 
 
-def test_register_resolver_with_unregistered_parameters(
+def test_register_resolver_with_unregistered_inject_parameters(
     store: InjectipyStore,
 ) -> None:
-    def resolver(foo: str, bar: str) -> str:
+    def resolver(foo: str = Inject["missing_foo"], bar: str = Inject["missing_bar"]) -> str:
         return f"{foo} {bar}"
 
     # Registration should succeed (forward references allowed)
     store.register_resolver("resolved", resolver)
 
-    # But resolution should fail due to missing dependencies
-    with pytest.raises(TypeError, match="missing .* required positional arguments"):
-        store["resolved"]
+    # Resolution should succeed but with Inject objects since dependencies are missing
+    result = store["resolved"]
+    assert "<injectipy.models.inject.Inject object" in result
 
 
 def test_register_evaluate_once_resolver(

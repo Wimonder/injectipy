@@ -131,28 +131,8 @@ def test_valid_dependency_chain():
     assert result == "C with B with A"
 
 
-def test_circular_dependency_by_param_name():
-    """Test circular dependency detection using parameter names."""
-    store = InjectipyStore()
-
-    # Test circular dependency with regular parameter names
-
-    def resolver_a(b):  # parameter name 'b' will match key 'b'
-        return f"A with {b}"
-
-    def resolver_b(a):  # parameter name 'a' will match key 'a'
-        return f"B with {a}"
-
-    # Use simple keys for this test
-    store.register_resolver("a", resolver_a)
-
-    # This should detect circular dependency
-    with pytest.raises(ValueError, match="Circular dependency detected"):
-        store.register_resolver("b", resolver_b)
-
-
-def test_mixed_inject_and_param_name_dependencies():
-    """Test circular dependency with mixed Inject and parameter name dependencies."""
+def test_mixed_inject_dependencies():
+    """Test circular dependency with Inject dependencies."""
     store = InjectipyStore()
 
     import time
@@ -161,26 +141,15 @@ def test_mixed_inject_and_param_name_dependencies():
     key_a = f"mixed_a_{timestamp}"
     key_b = f"mixed_b_{timestamp}"
 
-    def resolver_a(**kwargs):
-        b = kwargs.get(key_b)  # Uses parameter name lookup to depend on key_b
+    def resolver_a(b=Inject[key_b]):  # Uses Inject to depend on key_b
         return f"A with {b}"
 
-    def resolver_b(**kwargs):
-        a = kwargs.get(key_a)  # Uses parameter name lookup to depend on key_a
-        return f"B with {a}"
-
-    # This test needs to be updated because **kwargs is not supported
-    # Let's create a simpler version using Inject both ways
-
-    def resolver_a_simple(b=Inject[key_b]):  # Uses Inject to depend on key_b
-        return f"A with {b}"
-
-    def resolver_b_simple(a=Inject[key_a]):  # Uses Inject to depend on key_a
+    def resolver_b(a=Inject[key_a]):  # Uses Inject to depend on key_a
         return f"B with {a}"
 
     # Register first resolver
-    store.register_resolver(key_a, resolver_a_simple)
+    store.register_resolver(key_a, resolver_a)
 
     # This should detect circular dependency
     with pytest.raises(ValueError, match="Circular dependency detected"):
-        store.register_resolver(key_b, resolver_b_simple)
+        store.register_resolver(key_b, resolver_b)

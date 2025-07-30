@@ -43,13 +43,13 @@ This section contains the complete API reference for injectipy.
 ## Core Components
 
 - [`inject`](inject.md) - The main dependency injection decorator
-- [`Inject`](models/inject.md) - Type-safe parameter marker for dependency injection
+- [`Inject`](models/inject.md) - Type-safe dependency marker for dependency injection
 - [`InjectipyStore`](store.md) - Thread-safe dependency container and resolver
 
 ## Quick Links
 
 - [inject decorator](inject.md#injectipy.inject.inject) - Enable dependency injection on functions
-- [Inject class](models/inject.md#injectipy.models.inject.Inject) - Mark parameters for injection
+- [Inject class](models/inject.md#injectipy.models.inject.Inject) - Mark dependencies for injection
 - [InjectipyStore](store.md#injectipy.store.InjectipyStore) - Main dependency container
 - [injectipy_store](store.md#injectipy.store.injectipy_store) - Global singleton instance
 

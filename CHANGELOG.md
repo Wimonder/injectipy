@@ -43,7 +43,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `InjectipyStore` for thread-safe dependency management
 - Lazy evaluation with optional caching
 - Support for values, resolvers, and callable dependencies
-- Automatic parameter name resolution
 - Context manager support for testing
 
 ### Infrastructure

@@ -76,8 +76,7 @@ class InjectipyStore:
         """Register a factory function as a dependency resolver.
 
         The resolver function will be called to create the dependency value when
-        requested. Dependencies can be injected into the resolver using parameter
-        names or Inject[key] annotations.
+        requested. Dependencies can be injected into the resolver using Inject[key] annotations.
 
         Args:
             key: Unique identifier for this dependency
@@ -161,11 +160,9 @@ class InjectipyStore:
         dependencies = set()
         resolver_signature = inspect.signature(resolver)
 
-        for param_name, param in resolver_signature.parameters.items():
+        for param in resolver_signature.parameters.values():
             if param.default is not inspect.Parameter.empty and isinstance(param.default, Inject):
                 dependencies.add(param.default.get_inject_key())
-            else:
-                dependencies.add(param_name)
 
         return dependencies
 
@@ -193,7 +190,7 @@ class InjectipyStore:
         return False
 
     def __setitem__(self, key: Any, value: Any) -> None:
-        raise NotImplementedError("Use register_resolver or register_value instead")  # noqa E501
+        raise NotImplementedError("Use register_resolver or register_value instead")
 
     @overload
     def __getitem__(self, key: _ParamNameType) -> Any:
@@ -255,14 +252,9 @@ class InjectipyStore:
             if param.default is not inspect.Parameter.empty and isinstance(param.default, Inject):
                 try:
                     resolver_args[param_name] = self[param.default.get_inject_key()]
-                    continue
                 except KeyError:
-                    pass
-            else:
-                try:
-                    resolver_args[param_name] = self[param_name]
-                    continue
-                except KeyError:
+                    # If the dependency is not found and param has no default, this will cause an error
+                    # Let the resolver handle missing dependencies
                     pass
 
         return resolver(**resolver_args)
