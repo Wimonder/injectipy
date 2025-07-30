@@ -169,23 +169,40 @@ jobs:
         find artifacts/ -name "*.whl" -o -name "*.tar.gz" | xargs cp -t dist/
         ls -la dist/
 
-    - name: Generate changelog
+    - name: Set up Python for scripts
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install script dependencies
+      run: |
+        pip install toml
+
+    - name: Generate release notes
       id: changelog
       run: |
-        # Get the previous tag
-        PREV_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
-        CURRENT_TAG="v${{ needs.validate-release.outputs.version }}"
-
-        echo "Generating changelog from $PREV_TAG to $CURRENT_TAG"
-
-        if [ -n "$PREV_TAG" ]; then
-          CHANGES=$(git log --pretty=format:"- %s (%h)" $PREV_TAG..HEAD)
+        VERSION="${{ needs.validate-release.outputs.version }}"
+        
+        # Try to generate from our release notes script
+        if [ -f "scripts/release_notes_generator.py" ]; then
+          echo "Generating release notes using automated script"
+          python scripts/release_notes_generator.py "$VERSION" --template github --output release_notes.md
         else
-          CHANGES=$(git log --pretty=format:"- %s (%h)")
-        fi
+          # Fallback to git log approach
+          echo "Using fallback git log approach"
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
+          CURRENT_TAG="v$VERSION"
 
-        # Create release notes
-        cat > release_notes.md << EOF
+          echo "Generating changelog from $PREV_TAG to $CURRENT_TAG"
+
+          if [ -n "$PREV_TAG" ]; then
+            CHANGES=$(git log --pretty=format:"- %s (%h)" $PREV_TAG..HEAD)
+          else
+            CHANGES=$(git log --pretty=format:"- %s (%h)")
+          fi
+
+          # Create release notes
+          cat > release_notes.md << EOF
         ## What's Changed
 
         $CHANGES
@@ -193,17 +210,18 @@ jobs:
         ## Installation
 
         \`\`\`bash
-        pip install injectipy==${{ needs.validate-release.outputs.version }}
+        pip install injectipy==$VERSION
         \`\`\`
 
         ## Poetry
 
         \`\`\`bash
-        poetry add injectipy==${{ needs.validate-release.outputs.version }}
+        poetry add injectipy==$VERSION
         \`\`\`
 
         **Full Changelog**: https://github.com/${{ github.repository }}/compare/$PREV_TAG...$CURRENT_TAG
         EOF
+        fi
 
         echo "changelog_file=release_notes.md" >> $GITHUB_OUTPUT
 
