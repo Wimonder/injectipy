@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Keyword-only parameters now work properly with @inject decorator
+- @inject decorator now works with @classmethod and @staticmethod in any order
+- Improved decorator interaction compatibility
 
 ### Security
 

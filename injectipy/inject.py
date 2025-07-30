@@ -19,9 +19,10 @@ def inject(fn: F) -> F:
     arguments passed explicitly are handled normally.
 
     Supports both regular parameters and keyword-only parameters with Inject defaults.
+    Also works with classmethod and staticmethod when applied in the correct order.
 
     Args:
-        fn: The function to decorate
+        fn: The function, classmethod, or staticmethod to decorate
 
     Returns:
         The decorated function with dependency injection enabled
@@ -45,9 +46,20 @@ def inject(fn: F) -> F:
         - Explicitly passed arguments always override injection
         - The function can be called normally with all parameters if needed
         - Supports both regular and keyword-only parameters
+        - For classmethod/staticmethod: use @classmethod/@staticmethod first, then @inject
     """
-    original_defaults = fn.__defaults__
-    original_kwdefaults = fn.__kwdefaults__
+    # Handle classmethod and staticmethod objects
+    is_classmethod = isinstance(fn, classmethod)
+    is_staticmethod = isinstance(fn, staticmethod)
+
+    if is_classmethod or is_staticmethod:
+        original_func = fn.__func__  # type: ignore[attr-defined]
+        original_defaults = original_func.__defaults__
+        original_kwdefaults = original_func.__kwdefaults__
+    else:
+        original_func = fn
+        original_defaults = fn.__defaults__
+        original_kwdefaults = fn.__kwdefaults__
 
     # Check if there are any Inject defaults in either regular or keyword-only parameters
     has_inject_defaults = False
@@ -63,7 +75,7 @@ def inject(fn: F) -> F:
     if not has_inject_defaults:
         return fn
 
-    @functools.wraps(fn)
+    @functools.wraps(original_func)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         # Handle regular parameter defaults (__defaults__)
         if original_defaults:
@@ -75,12 +87,12 @@ def inject(fn: F) -> F:
                         value = injectipy_store[inject_key]
                     except KeyError as e:
                         raise RuntimeError(
-                            f"Could not resolve {inject_key} for {fn.__name__} in module {fn.__module__}"
+                            f"Could not resolve {inject_key} for {original_func.__name__} in module {original_func.__module__}"
                         ) from e
                     new_defaults.append(value)
                 else:
                     new_defaults.append(default)
-            fn.__defaults__ = tuple(new_defaults)
+            original_func.__defaults__ = tuple(new_defaults)
 
         # Handle keyword-only parameter defaults (__kwdefaults__)
         if original_kwdefaults:
@@ -92,23 +104,30 @@ def inject(fn: F) -> F:
                         value = injectipy_store[inject_key]
                     except KeyError as e:
                         raise RuntimeError(
-                            f"Could not resolve {inject_key} for {fn.__name__} in module {fn.__module__}"
+                            f"Could not resolve {inject_key} for {original_func.__name__} in module {original_func.__module__}"
                         ) from e
                     new_kwdefaults[param_name] = value
                 else:
                     new_kwdefaults[param_name] = default
-            fn.__kwdefaults__ = new_kwdefaults
+            original_func.__kwdefaults__ = new_kwdefaults
 
         try:
-            return_value = fn(*args, **kwargs)
+            # Always call the original function directly since we've modified its defaults
+            return_value = original_func(*args, **kwargs)
         finally:
             # Always restore original defaults, even if function raises an exception
-            fn.__defaults__ = original_defaults
-            fn.__kwdefaults__ = original_kwdefaults
+            original_func.__defaults__ = original_defaults
+            original_func.__kwdefaults__ = original_kwdefaults
 
         return return_value
 
-    return cast(F, wrapper)
+    # Return appropriate wrapper based on function type
+    if is_classmethod:
+        return cast(F, classmethod(wrapper))
+    elif is_staticmethod:
+        return cast(F, staticmethod(wrapper))
+    else:
+        return cast(F, wrapper)
 
 
 __all__ = ["inject"]

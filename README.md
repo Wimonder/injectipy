@@ -61,6 +61,16 @@ class UserService:
     def get_user(self, user_id: int):
         return f"User {user_id} from {self.db}"
 
+    @inject
+    @classmethod
+    def create_service(cls, config: str = Inject["config"]):
+        return cls()
+
+    @inject
+    @staticmethod
+    def utility_function(helper: str = Inject["helper"]):
+        return f"Helper: {helper}"
+
 # Dependencies are injected automatically
 service = UserService()
 print(service.get_user(456))
@@ -143,6 +153,50 @@ print(result)  # "Processing user_data with ProductionDB, RedisCache, debug=Fals
 result = process_data("user_data", cache="MemoryCache", debug=True)
 print(result)  # "Processing user_data with ProductionDB, MemoryCache, debug=True"
 ```
+
+### Decorator Compatibility
+
+Injectipy works seamlessly with other Python decorators:
+
+```python
+from injectipy import inject, Inject, injectipy_store
+
+# Register dependencies
+injectipy_store.register_value("logger", "ProductionLogger")
+
+class APIService:
+    # ✅ Recommended order: @inject comes after @classmethod/@staticmethod
+    @inject
+    @classmethod
+    def create_from_config(cls, logger=Inject["logger"]):
+        return cls(logger)
+
+    @inject
+    @staticmethod
+    def validate_data(data, logger=Inject["logger"]):
+        print(f"Validating with {logger}")
+        return True
+
+# Works with other decorators too
+def timer_decorator(func):
+    def wrapper(*args, **kwargs):
+        result = func(*args, **kwargs)
+        return f"timed({result})"
+    return wrapper
+
+@timer_decorator
+@inject
+def process_data(data, logger=Inject["logger"]):
+    return f"Processed {data} with {logger}"
+
+result = process_data("user_data")
+print(result)  # "timed(Processed user_data with ProductionLogger)"
+```
+
+**Decorator Order Guidelines:**
+- `@inject` should come **after** `@classmethod` or `@staticmethod`
+- `@inject` should come **before** other function decorators
+- Both orders work with `@classmethod`/`@staticmethod`, but `@inject` first is recommended
 
 ### Type Safety
 
