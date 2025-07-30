@@ -195,8 +195,23 @@ print(result)  # "timed(Processed user_data with ProductionLogger)"
 
 **Decorator Order Guidelines:**
 - `@inject` should come **after** `@classmethod` or `@staticmethod`
-- `@inject` should come **before** other function decorators
-- Both orders work with `@classmethod`/`@staticmethod`, but `@inject` first is recommended
+- `@inject` should come **after** other function decorators (like `@contextmanager`, `@lru_cache`, `@property`)
+- General rule: Apply `@inject` **last** (closest to the function definition)
+
+**Examples of correct decorator order:**
+```python
+@contextmanager
+@inject
+def my_context(service=Inject["dep"]): ...
+
+@lru_cache(maxsize=128)
+@inject
+def cached_func(service=Inject["dep"]): ...
+
+@property
+@inject
+def computed_prop(self, service=Inject["dep"]): ...
+```
 
 ### Type Safety
 

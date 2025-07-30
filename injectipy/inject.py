@@ -52,14 +52,28 @@ def inject(fn: F) -> F:
     is_classmethod = isinstance(fn, classmethod)
     is_staticmethod = isinstance(fn, staticmethod)
 
+    # Check for custom descriptors (objects with __get__ and func attributes)
+    is_custom_descriptor = (
+        hasattr(fn, "__get__")
+        and hasattr(fn, "func")
+        and not is_classmethod
+        and not is_staticmethod
+        and not callable(fn)
+    )
+
     if is_classmethod or is_staticmethod:
         original_func = fn.__func__  # type: ignore[attr-defined]
         original_defaults = original_func.__defaults__
         original_kwdefaults = original_func.__kwdefaults__
+    elif is_custom_descriptor:
+        # Handle custom descriptors that have a 'func' attribute
+        original_func = fn.func  # type: ignore[attr-defined]
+        original_defaults = original_func.__defaults__
+        original_kwdefaults = original_func.__kwdefaults__
     else:
         original_func = fn
-        original_defaults = fn.__defaults__
-        original_kwdefaults = fn.__kwdefaults__
+        original_defaults = getattr(fn, "__defaults__", None)
+        original_kwdefaults = getattr(fn, "__kwdefaults__", None)
 
     # Check if there are any Inject defaults in either regular or keyword-only parameters
     has_inject_defaults = False
@@ -126,6 +140,10 @@ def inject(fn: F) -> F:
         return cast(F, classmethod(wrapper))
     elif is_staticmethod:
         return cast(F, staticmethod(wrapper))
+    elif is_custom_descriptor:
+        # Create a new descriptor instance with the wrapped function
+        descriptor_class = type(fn)
+        return cast(F, descriptor_class(wrapper))  # type: ignore[misc]
     else:
         return cast(F, wrapper)
 
