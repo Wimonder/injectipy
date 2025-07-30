@@ -18,6 +18,8 @@ def inject(fn: F) -> F:
     parameters that have Inject[key] default values. Regular parameters and
     arguments passed explicitly are handled normally.
 
+    Supports both regular parameters and keyword-only parameters with Inject defaults.
+
     Args:
         fn: The function to decorate
 
@@ -42,33 +44,67 @@ def inject(fn: F) -> F:
         - Only parameters with Inject[key] defaults are injected
         - Explicitly passed arguments always override injection
         - The function can be called normally with all parameters if needed
+        - Supports both regular and keyword-only parameters
     """
     original_defaults = fn.__defaults__
+    original_kwdefaults = fn.__kwdefaults__
 
-    if not original_defaults or all(not isinstance(default, Inject) for default in original_defaults):
+    # Check if there are any Inject defaults in either regular or keyword-only parameters
+    has_inject_defaults = False
+
+    if original_defaults:
+        has_inject_defaults = any(isinstance(default, Inject) for default in original_defaults)
+
+    if original_kwdefaults:
+        has_inject_defaults = has_inject_defaults or any(
+            isinstance(default, Inject) for default in original_kwdefaults.values()
+        )
+
+    if not has_inject_defaults:
         return fn
 
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
-        new_defaults = []
-        for default in original_defaults:
-            if isinstance(default, Inject):
-                inject_key = default.get_inject_key()
-                try:
-                    value = injectipy_store[inject_key]
-                except KeyError as e:
-                    raise RuntimeError(
-                        f"Could not resolve {inject_key} for {fn.__name__} in module {fn.__module__}"
-                    ) from e
-                new_defaults.append(value)
-            else:
-                new_defaults.append(default)
+        # Handle regular parameter defaults (__defaults__)
+        if original_defaults:
+            new_defaults = []
+            for default in original_defaults:
+                if isinstance(default, Inject):
+                    inject_key = default.get_inject_key()
+                    try:
+                        value = injectipy_store[inject_key]
+                    except KeyError as e:
+                        raise RuntimeError(
+                            f"Could not resolve {inject_key} for {fn.__name__} in module {fn.__module__}"
+                        ) from e
+                    new_defaults.append(value)
+                else:
+                    new_defaults.append(default)
+            fn.__defaults__ = tuple(new_defaults)
 
-        fn.__defaults__ = tuple(new_defaults)
+        # Handle keyword-only parameter defaults (__kwdefaults__)
+        if original_kwdefaults:
+            new_kwdefaults = {}
+            for param_name, default in original_kwdefaults.items():
+                if isinstance(default, Inject):
+                    inject_key = default.get_inject_key()
+                    try:
+                        value = injectipy_store[inject_key]
+                    except KeyError as e:
+                        raise RuntimeError(
+                            f"Could not resolve {inject_key} for {fn.__name__} in module {fn.__module__}"
+                        ) from e
+                    new_kwdefaults[param_name] = value
+                else:
+                    new_kwdefaults[param_name] = default
+            fn.__kwdefaults__ = new_kwdefaults
 
-        return_value = fn(*args, **kwargs)
-
-        fn.__defaults__ = original_defaults
+        try:
+            return_value = fn(*args, **kwargs)
+        finally:
+            # Always restore original defaults, even if function raises an exception
+            fn.__defaults__ = original_defaults
+            fn.__kwdefaults__ = original_kwdefaults
 
         return return_value
 
