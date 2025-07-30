@@ -11,14 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Semantic versioning implementation
 - Automated changelog generation
 - Release management automation
+- Support for keyword-only parameters with Inject
 
 ### Changed
 
 ### Deprecated
 
 ### Removed
+- Parameter name injection (breaking change - use explicit Inject[key] only)
 
 ### Fixed
+- Keyword-only parameters now work properly with @inject decorator
 
 ### Security
 

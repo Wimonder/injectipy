@@ -120,6 +120,30 @@ assert resource1 is resource2  # Same instance
 
 ## Advanced Features
 
+### Keyword-Only Parameters
+
+Injectipy also supports keyword-only parameters with Inject:
+
+```python
+from injectipy import inject, Inject, injectipy_store
+
+# Register dependencies
+injectipy_store.register_value("database", "ProductionDB")
+injectipy_store.register_value("cache", "RedisCache")
+
+@inject
+def process_data(data: str, *, db=Inject["database"], cache=Inject["cache"], debug=False):
+    return f"Processing {data} with {db}, {cache}, debug={debug}"
+
+# Keyword-only parameters work seamlessly
+result = process_data("user_data")
+print(result)  # "Processing user_data with ProductionDB, RedisCache, debug=False"
+
+# Override specific parameters
+result = process_data("user_data", cache="MemoryCache", debug=True)
+print(result)  # "Processing user_data with ProductionDB, MemoryCache, debug=True"
+```
+
 ### Type Safety
 
 Injectipy is fully type-safe and works seamlessly with mypy:
