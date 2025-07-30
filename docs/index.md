@@ -10,12 +10,12 @@ A lightweight, thread-safe dependency injection library for Python that provides
 
 ## Features
 
-✨ **Simple & Intuitive**: Clean API with minimal learning curve  
-🔒 **Thread-Safe**: Built for concurrent applications  
-🏷️ **Type-Safe**: Full mypy support with generic type hints  
-🔄 **Circular Detection**: Automatic circular dependency detection  
-⚡ **High Performance**: Optimized for speed with optional caching  
-🧪 **Test-Friendly**: Easy mocking and test isolation  
+✨ **Simple & Intuitive**: Clean API with minimal learning curve
+🔒 **Thread-Safe**: Built for concurrent applications
+🏷️ **Type-Safe**: Full mypy support with generic type hints
+🔄 **Circular Detection**: Automatic circular dependency detection
+⚡ **High Performance**: Optimized for speed with optional caching
+🧪 **Test-Friendly**: Easy mocking and test isolation
 
 ## Quick Example
 
@@ -40,7 +40,7 @@ user = create_user("Alice")
 ### 🚀 **Lightweight & Fast**
 No heavy frameworks or complex configuration. Just clean, fast dependency injection.
 
-### 🔧 **Developer Friendly** 
+### 🔧 **Developer Friendly**
 Intuitive API that works with your existing code. No need to restructure your application.
 
 ### 🛡️ **Production Ready**
@@ -64,7 +64,7 @@ poetry add injectipy
 ## Getting Started
 
 1. **[Installation](installation.md)** - Install injectipy in your project
-2. **[Quick Start](quickstart.md)** - Get up and running in 5 minutes  
+2. **[Quick Start](quickstart.md)** - Get up and running in 5 minutes
 3. **[Basic Usage](basic-usage.md)** - Learn the core concepts
 4. **[Advanced Patterns](advanced-patterns.md)** - Explore powerful features
 
@@ -100,7 +100,7 @@ from injectipy import injectipy_store
 # Register values
 injectipy_store.register_value("api_key", "secret")
 
-# Register factory functions  
+# Register factory functions
 injectipy_store.register_resolver("service", lambda: MyService())
 
 # Register with caching
@@ -110,7 +110,7 @@ injectipy_store.register_resolver("db", create_database, cache=True)
 ## Use Cases
 
 - **Web Applications**: Inject database connections, configuration, services
-- **CLI Tools**: Manage application configuration and resources  
+- **CLI Tools**: Manage application configuration and resources
 - **Testing**: Easy mocking and test isolation
 - **Microservices**: Clean dependency management across services
 - **Data Processing**: Inject processors, validators, and transformers

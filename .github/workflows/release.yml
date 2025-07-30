@@ -182,7 +182,7 @@ jobs:
       id: changelog
       run: |
         VERSION="${{ needs.validate-release.outputs.version }}"
-        
+
         # Try to generate from our release notes script
         if [ -f "scripts/release_notes_generator.py" ]; then
           echo "Generating release notes using automated script"

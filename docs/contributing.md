@@ -112,7 +112,7 @@ git push origin feature/your-feature-name
 ### Code Style
 
 - **Formatting**: Use Black for code formatting (120 char line length)
-- **Linting**: Code must pass Ruff linting checks  
+- **Linting**: Code must pass Ruff linting checks
 - **Type Hints**: All public functions must have type hints
 - **Docstrings**: Use Google-style docstrings for all public functions
 
@@ -120,22 +120,22 @@ Example:
 
 ```python
 def register_resolver(
-    self, 
-    key: StoreKeyType, 
-    resolver: Callable[..., T], 
+    self,
+    key: StoreKeyType,
+    resolver: Callable[..., T],
     cache: bool = False
 ) -> None:
     """Register a resolver function for dependency injection.
-    
+
     Args:
         key: The dependency key to register
         resolver: Function that creates the dependency instance
         cache: Whether to cache the resolved instance
-        
+
     Raises:
         ValueError: If key is already registered
         TypeError: If resolver is not callable
-        
+
     Example:
         >>> store.register_resolver("service", lambda: MyService())
         >>> store.register_resolver("db", create_db_connection, cache=True)
@@ -156,19 +156,19 @@ def test_register_resolver_with_caching():
     """Test that resolver caching works correctly."""
     store = InjectipyStore()
     call_count = 0
-    
+
     def expensive_resolver():
         nonlocal call_count
         call_count += 1
         return f"result_{call_count}"
-    
+
     store.register_resolver("cached", expensive_resolver, cache=True)
-    
+
     # First call should execute resolver
     result1 = store.resolve("cached")
     assert result1 == "result_1"
     assert call_count == 1
-    
+
     # Second call should use cached value
     result2 = store.resolve("cached")
     assert result2 == "result_1"  # Same result
@@ -196,7 +196,7 @@ type(scope): description
 
 Types:
 - `feat`: New features
-- `fix`: Bug fixes  
+- `fix`: Bug fixes
 - `docs`: Documentation changes
 - `style`: Code formatting changes
 - `refactor`: Code changes that don't add features or fix bugs
@@ -217,7 +217,7 @@ test: add performance benchmarks for large dependency graphs
 - Check the [issue tracker](https://github.com/Wimonder/injectipy/issues) for bugs
 - Look for issues labeled `bug` or `help wanted`
 
-### ✨ New Features  
+### ✨ New Features
 - Dependency scoping (request, session, etc.)
 - Framework integrations (FastAPI, Flask, Django)
 - Performance optimizations
