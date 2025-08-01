@@ -1,20 +1,19 @@
 # Injectipy
 
-A lightweight, thread-safe dependency injection library for Python with support for circular dependency detection and type safety.
+A dependency injection library for Python that uses explicit scopes instead of global state. Provides type-safe dependency resolution with circular dependency detection.
 
-[![Python Version](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Python Version](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Type Checked](https://img.shields.io/badge/typed-mypy-blue.svg)](https://mypy.readthedocs.io/)
 
-## Features
+## Key Features
 
-- **Thread-safe**: Singleton pattern with proper locking for concurrent access
-- **Circular dependency detection**: Prevents runtime errors with dependency cycle analysis
--  **Type-safe**: Full mypy compatibility with strict type checking
-- **Forward references**: Register dependencies in any order
-- **Simple API**: Clean decorator-based injection with minimal boilerplate
-- **Lazy evaluation**: Dependencies resolved only when needed
-- **Test-friendly**: Built-in test isolation support
+- **Explicit scopes**: Dependencies managed within context managers, no global state
+- **Type safety**: Works with mypy and provides runtime type checking
+- **Circular dependency detection**: Detects dependency cycles at registration time
+- **Thread safety**: Each scope is isolated, safe for concurrent use
+- **Lazy evaluation**: Dependencies resolved only when accessed
+- **Test isolation**: Each test can use its own scope with different dependencies
 
 ## Installation
 
@@ -27,31 +26,41 @@ pip install injectipy
 ### Basic Usage
 
 ```python
-from injectipy import inject, Inject, injectipy_store
+from injectipy import inject, Inject, DependencyScope
+
+# Create a dependency scope
+scope = DependencyScope()
 
 # Register a simple value
-injectipy_store.register_value("database_url", "postgresql://localhost/mydb")
+scope.register_value("database_url", "postgresql://localhost/mydb")
 
 # Register a factory function
 def create_database_connection(database_url: str = Inject["database_url"]):
     return f"Connected to {database_url}"
 
-injectipy_store.register_resolver("db_connection", create_database_connection)
+scope.register_resolver("db_connection", create_database_connection)
 
-# Use dependency injection in your functions
+# Use dependency injection in your functions within a scope context
 @inject
 def get_user(user_id: int, db_connection: str = Inject["db_connection"]):
     return f"User {user_id} from {db_connection}"
 
-# Call the function - dependencies are automatically injected
-user = get_user(123)
-print(user)  # "User 123 from Connected to postgresql://localhost/mydb"
+# Use the scope as a context manager
+with scope:
+    user = get_user(123)
+    print(user)  # "User 123 from Connected to postgresql://localhost/mydb"
 ```
 
 ### Class-based Injection
 
 ```python
-from injectipy import inject, Inject, injectipy_store
+from injectipy import inject, Inject, DependencyScope
+
+# Create and configure a scope
+scope = DependencyScope()
+scope.register_value("db_connection", "PostgreSQL://localhost")
+scope.register_value("config", "production_config")
+scope.register_value("helper", "UtilityHelper")
 
 class UserService:
     @inject
@@ -71,19 +80,23 @@ class UserService:
     def utility_function(helper: str = Inject["helper"]):
         return f"Helper: {helper}"
 
-# Dependencies are injected automatically
-service = UserService()
-print(service.get_user(456))
+# Use within scope context for dependency injection
+with scope:
+    service = UserService()
+    print(service.get_user(456))
 ```
 
 ### Factory Functions with Dependencies
 
 ```python
-from injectipy import inject, Inject, injectipy_store
+from injectipy import inject, Inject, DependencyScope
+
+# Create and configure a scope
+scope = DependencyScope()
 
 # Register configuration
-injectipy_store.register_value("api_key", "secret123")
-injectipy_store.register_value("base_url", "https://api.example.com")
+scope.register_value("api_key", "secret123")
+scope.register_value("base_url", "https://api.example.com")
 
 # Factory function that depends on other registered dependencies
 def create_api_client(
@@ -93,20 +106,21 @@ def create_api_client(
     return f"APIClient(key={api_key}, url={base_url})"
 
 # Register the factory
-injectipy_store.register_resolver("api_client", create_api_client)
+scope.register_resolver("api_client", create_api_client)
 
-# Use in your code
+# Use in your code within scope context
 @inject
 def fetch_data(client = Inject["api_client"]):
     return f"Fetching data with {client}"
 
-print(fetch_data())
+with scope:
+    print(fetch_data())
 ```
 
 ### Singleton Pattern with `evaluate_once`
 
 ```python
-from injectipy import injectipy_store
+from injectipy import DependencyScope
 import time
 
 def expensive_resource():
@@ -114,55 +128,60 @@ def expensive_resource():
     time.sleep(1)  # Simulate expensive operation
     return "ExpensiveResource"
 
-# Register with evaluate_once=True for singleton behavior
-injectipy_store.register_resolver(
+# Create scope and register with evaluate_once=True for singleton behavior
+scope = DependencyScope()
+scope.register_resolver(
     "expensive_resource",
     expensive_resource,
     evaluate_once=True
 )
 
-# First access creates the resource
-resource1 = injectipy_store["expensive_resource"]  # Prints "Creating..."
-resource2 = injectipy_store["expensive_resource"]  # No print, reuses cached
+with scope:
+    # First access creates the resource
+    resource1 = scope["expensive_resource"]  # Prints "Creating..."
+    resource2 = scope["expensive_resource"]  # No print, reuses cached
 
-assert resource1 is resource2  # Same instance
+    assert resource1 is resource2  # Same instance
 ```
 
-## Advanced Features
+## Advanced Usage
 
 ### Keyword-Only Parameters
 
-Injectipy also supports keyword-only parameters with Inject:
+The `@inject` decorator supports keyword-only parameters:
 
 ```python
-from injectipy import inject, Inject, injectipy_store
+from injectipy import inject, Inject, DependencyScope
 
-# Register dependencies
-injectipy_store.register_value("database", "ProductionDB")
-injectipy_store.register_value("cache", "RedisCache")
+# Create scope and register dependencies
+scope = DependencyScope()
+scope.register_value("database", "ProductionDB")
+scope.register_value("cache", "RedisCache")
 
 @inject
 def process_data(data: str, *, db=Inject["database"], cache=Inject["cache"], debug=False):
     return f"Processing {data} with {db}, {cache}, debug={debug}"
 
-# Keyword-only parameters work seamlessly
-result = process_data("user_data")
-print(result)  # "Processing user_data with ProductionDB, RedisCache, debug=False"
+with scope:
+    # Keyword-only parameters work seamlessly
+    result = process_data("user_data")
+    print(result)  # "Processing user_data with ProductionDB, RedisCache, debug=False"
 
-# Override specific parameters
-result = process_data("user_data", cache="MemoryCache", debug=True)
-print(result)  # "Processing user_data with ProductionDB, MemoryCache, debug=True"
+    # Override specific parameters
+    result = process_data("user_data", cache="MemoryCache", debug=True)
+    print(result)  # "Processing user_data with ProductionDB, MemoryCache, debug=True"
 ```
 
 ### Decorator Compatibility
 
-Injectipy works seamlessly with other Python decorators:
+The `@inject` decorator works with other Python decorators. Order matters:
 
 ```python
-from injectipy import inject, Inject, injectipy_store
+from injectipy import inject, Inject, DependencyScope
 
-# Register dependencies
-injectipy_store.register_value("logger", "ProductionLogger")
+# Create scope and register dependencies
+scope = DependencyScope()
+scope.register_value("logger", "ProductionLogger")
 
 class APIService:
     # ✅ Recommended order: @inject comes after @classmethod/@staticmethod
@@ -189,37 +208,34 @@ def timer_decorator(func):
 def process_data(data, logger=Inject["logger"]):
     return f"Processed {data} with {logger}"
 
-result = process_data("user_data")
-print(result)  # "timed(Processed user_data with ProductionLogger)"
+with scope:
+    result = process_data("user_data")
+    print(result)  # "timed(Processed user_data with ProductionLogger)"
 ```
 
-**Decorator Order Guidelines:**
-- `@inject` should come **after** `@classmethod` or `@staticmethod`
-- `@inject` should come **after** other function decorators (like `@contextmanager`, `@lru_cache`, `@property`)
-- General rule: Apply `@inject` **last** (closest to the function definition)
+**Decorator ordering rules:**
+- `@inject` comes after `@classmethod` or `@staticmethod`
+- `@inject` comes after other decorators (`@contextmanager`, `@lru_cache`, `@property`)
+- Apply `@inject` last (closest to the function definition)
 
-**Examples of correct decorator order:**
 ```python
-@contextmanager
+# Correct order
+@classmethod
 @inject
-def my_context(service=Inject["dep"]): ...
+def create_service(cls, dep=Inject["service"]): ...
 
 @lru_cache(maxsize=128)
 @inject
-def cached_func(service=Inject["dep"]): ...
-
-@property
-@inject
-def computed_prop(self, service=Inject["dep"]): ...
+def cached_func(dep=Inject["service"]): ...
 ```
 
 ### Type Safety
 
-Injectipy is fully type-safe and works seamlessly with mypy:
+Works with mypy for static type checking:
 
 ```python
 from typing import Protocol
-from injectipy import inject, Inject, injectipy_store
+from injectipy import inject, Inject, DependencyScope
 
 class DatabaseProtocol(Protocol):
     def query(self, sql: str) -> list: ...
@@ -228,124 +244,168 @@ class PostgreSQLDatabase:
     def query(self, sql: str) -> list:
         return ["result1", "result2"]
 
-# Register with type hints
-injectipy_store.register_value("database", PostgreSQLDatabase())
+# Create scope and register with type hints
+scope = DependencyScope()
+scope.register_value("database", PostgreSQLDatabase())
 
 @inject
 def get_users(db: DatabaseProtocol = Inject["database"]) -> list:
     return db.query("SELECT * FROM users")
 
-# mypy will verify types correctly
-users: list = get_users()
+with scope:
+    # mypy will verify types correctly
+    users: list = get_users()
 ```
 
 
-### Multiple Stores
+### Scope Isolation and Nesting
 
-While there's a default global store, you can create isolated stores:
+You can create multiple isolated scopes and even nest them:
 
 ```python
-from injectipy import InjectipyStore, inject, Inject
+from injectipy import DependencyScope, inject, Inject
 
-# Create custom store
-my_store = InjectipyStore()
-my_store.register_value("config", {"env": "test"})
+# Create separate scopes for different contexts
+production_scope = DependencyScope()
+production_scope.register_value("config", {"env": "production"})
+production_scope.register_value("db_url", "postgresql://prod-server/db")
 
-# Use with custom store (you'll need to manage the store yourself)
+test_scope = DependencyScope()
+test_scope.register_value("config", {"env": "test"})
+test_scope.register_value("db_url", "sqlite:///:memory:")
+
 @inject
-def my_function(config: dict = Inject["config"]):
-    return config
+def get_environment(config: dict = Inject["config"]):
+    return config["env"]
 
-# Note: Custom stores require manual management
-# The global injectipy_store is recommended for most use cases
+# Use different scopes for different contexts
+with production_scope:
+    print(get_environment())  # "production"
+
+with test_scope:
+    print(get_environment())  # "test"
+
+# Scopes can also be nested - inner scope takes precedence
+with production_scope:
+    with test_scope:
+        print(get_environment())  # "test" (inner scope wins)
 ```
 
 ## Error Handling
 
-### Missing Dependencies
+The library raises clear error messages for common issues:
 
 ```python
-from injectipy import inject, Inject
+from injectipy import inject, Inject, DependencyScope
+from injectipy import DependencyNotFoundError, CircularDependencyError, DuplicateRegistrationError
 
+# Missing dependency
 @inject
-def function_with_missing_dep(missing: str = Inject["nonexistent"]):
-    return missing
+def missing_dep(value: str = Inject["nonexistent"]):
+    return value
 
 try:
-    function_with_missing_dep()
-except KeyError as e:
-    print(f"Dependency not found: {e}")
-```
+    missing_dep()
+except DependencyNotFoundError as e:
+    print(e)  # "Dependency 'nonexistent' not found"
 
-### Circular Dependencies
-
-Injectipy automatically detects circular dependencies at registration time:
-
-```python
-from injectipy import injectipy_store, Inject
-
+# Circular dependency (detected at registration)
 def service_a(b = Inject["service_b"]):
-    return f"A depends on {b}"
+    return f"A: {b}"
 
 def service_b(a = Inject["service_a"]):
-    return f"B depends on {a}"
+    return f"B: {a}"
 
-injectipy_store.register_resolver("service_a", service_a)
+scope = DependencyScope()
+scope.register_resolver("service_a", service_a)
 
 try:
-    # This will raise ValueError: Circular dependency detected
-    injectipy_store.register_resolver("service_b", service_b)
-except ValueError as e:
-    print(f"Error: {e}")
+    scope.register_resolver("service_b", service_b)
+except CircularDependencyError as e:
+    print(e)  # "Circular dependency detected"
+
+# Duplicate registration
+scope = DependencyScope()
+scope.register_value("config", "prod")
+
+try:
+    scope.register_value("config", "dev")
+except DuplicateRegistrationError as e:
+    print(e)  # "Key 'config' already registered"
 ```
 
 ## Testing
 
-Injectipy provides test isolation through the global store:
+Use separate scopes for test isolation:
 
 ```python
 import pytest
-from injectipy import injectipy_store, inject, Inject
+from injectipy import DependencyScope, inject, Inject
 
-@pytest.fixture(autouse=True)
-def reset_store():
-    """Reset the store before each test"""
-    injectipy_store._reset_for_testing()
+@pytest.fixture
+def test_scope():
+    """Provide a clean scope for each test"""
+    return DependencyScope()
 
-def test_dependency_injection():
-    injectipy_store.register_value("test_value", "hello")
+def test_dependency_injection(test_scope):
+    test_scope.register_value("test_value", "hello")
 
     @inject
     def test_function(value: str = Inject["test_value"]):
         return value
 
-    assert test_function() == "hello"
+    with test_scope:
+        assert test_function() == "hello"
 
-def test_isolation():
-    # Store is automatically reset, so "test_value" from previous test is gone
-    with pytest.raises(KeyError):
-        injectipy_store["test_value"]
+def test_isolation(test_scope):
+    # Each test gets a fresh scope, so dependencies are isolated
+    test_scope.register_value("isolated_value", "test_specific")
+
+    @inject
+    def isolated_function(value: str = Inject["isolated_value"]):
+        return value
+
+    with test_scope:
+        assert isolated_function() == "test_specific"
+
+def test_scoped_mocking(test_scope):
+    # Easy to mock dependencies per test
+    test_scope.register_value("database", "MockDatabase")
+    test_scope.register_value("cache", "MockCache")
+
+    @inject
+    def service_function(db=Inject["database"], cache=Inject["cache"]):
+        return f"Using {db} and {cache}"
+
+    with test_scope:
+        result = service_function()
+        assert result == "Using MockDatabase and MockCache"
 ```
 
 ## Thread Safety
 
-Injectipy is fully thread-safe and can be used in concurrent applications:
+Scopes are thread-safe and can be shared between threads:
 
 ```python
 import threading
-from injectipy import injectipy_store, inject, Inject
+from injectipy import DependencyScope, inject, Inject
 
-# Register shared dependency
-injectipy_store.register_value("shared_resource", "ThreadSafeResource")
+# Create a shared scope
+shared_scope = DependencyScope()
+shared_scope.register_value("shared_resource", "ThreadSafeResource")
 
 @inject
 def worker_function(resource: str = Inject["shared_resource"]):
     return f"Worker using {resource}"
 
+def worker():
+    with shared_scope:  # Each thread uses the same scope safely
+        print(worker_function())
+
 # Safe to use across multiple threads
 threads = []
 for i in range(10):
-    thread = threading.Thread(target=lambda: print(worker_function()))
+    thread = threading.Thread(target=worker)
     threads.append(thread)
     thread.start()
 
@@ -358,32 +418,39 @@ for thread in threads:
 ### Core Components
 
 #### `@inject` decorator
-Decorates functions/methods to enable automatic dependency injection.
+Decorates functions/methods to enable automatic dependency injection within active scopes.
 
 #### `Inject[key]`
 Type-safe dependency marker for function parameters.
 
-#### `injectipy_store`
-Global singleton store for dependency registration and resolution.
+#### `DependencyScope`
+Context manager for managing dependency lifecycles and isolation.
 
-### Store Methods
+### DependencyScope Methods
 
 #### `register_value(key, value)`
-Register a static value as a dependency.
+Register a static value as a dependency. Returns self for method chaining.
 
 #### `register_resolver(key, resolver, *, evaluate_once=False)`
-Register a factory function as a dependency.
+Register a factory function as a dependency. Returns self for method chaining.
 - `evaluate_once=True`: Cache the result after first evaluation (singleton pattern)
 
 #### `[key]` (getitem)
-Resolve and return a dependency by key.
+Resolve and return a dependency by key. Only works within active scope context.
 
-#### `_reset_for_testing()`
-Clear all registered dependencies (for testing only).
+#### `contains(key)`
+Check if a dependency key is registered in this scope.
 
-## Contributing
+#### `is_active()`
+Check if this scope is currently active (within a `with` block).
 
-We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
+#### Context Manager Protocol
+- `__enter__()`: Activate the scope
+- `__exit__()`: Deactivate the scope and clean up
+
+## Development
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and contribution guidelines.
 
 ### Development Setup
 
@@ -402,10 +469,10 @@ poetry run pytest
 poetry run mypy injectipy/
 
 # Run linting
-poetry run flake8 injectipy/
+poetry run ruff check .
 ```
 
-### Running Tests
+### Testing
 
 ```bash
 # Run all tests
@@ -414,9 +481,9 @@ poetry run pytest
 # Run with coverage
 poetry run pytest --cov=injectipy
 
-# Run specific test categories
-poetry run pytest tests/test_thread_safety.py  # Thread safety tests
-poetry run pytest tests/test_circular_dependencies.py  # Circular dependency tests
+# Run specific test files
+poetry run pytest tests/test_core_inject.py
+poetry run pytest tests/test_scope_functionality.py
 ```
 
 ## License

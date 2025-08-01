@@ -35,7 +35,7 @@ Thank you for your interest in contributing to Injectipy! This document provides
 
 ### Prerequisites
 
-- Python 3.9 or higher
+- Python 3.11 or higher
 - [Poetry](https://python-poetry.org/) for dependency management
 - Git
 
@@ -64,7 +64,6 @@ We use several tools to maintain code quality:
 - **Black**: Code formatting
 - **Ruff**: Fast Python linting
 - **MyPy**: Static type checking
-- **Bandit**: Security vulnerability scanning
 - **pytest**: Testing framework
 - **Pre-commit**: Git hooks for code quality
 
@@ -79,13 +78,15 @@ poetry run pytest
 # Run with coverage
 poetry run pytest --cov=injectipy --cov-report=html
 
-# Run specific test categories
-poetry run pytest -m "not slow"          # Skip slow tests
-poetry run pytest -m performance         # Only performance tests
-poetry run pytest -m edge_case          # Only edge case tests
-
-# Run tests in parallel
-poetry run pytest -n 4
+# Run specific test files by functionality
+poetry run pytest tests/test_core_inject.py            # Basic @inject decorator tests
+poetry run pytest tests/test_scope_functionality.py   # DependencyScope tests
+poetry run pytest tests/test_error_handling.py        # Error handling tests
+poetry run pytest tests/test_parameter_types.py       # Parameter type support tests
+poetry run pytest tests/test_decorator_compatibility.py # Decorator interaction tests
+poetry run pytest tests/test_thread_safety.py         # Thread safety tests
+poetry run pytest tests/test_performance.py           # Performance benchmarks
+poetry run pytest tests/test_python_features.py       # Advanced Python feature tests
 ```
 
 ### Test Categories
@@ -97,36 +98,60 @@ We organize tests using pytest markers:
 - `slow`: Tests that take longer to run
 - `integration`: Integration tests
 
+### Test Organization
+
+Tests are organized by functionality in separate files:
+
+- `test_core_inject.py`: Basic @inject decorator functionality
+- `test_scope_functionality.py`: DependencyScope registration and resolution
+- `test_error_handling.py`: Error cases and exception handling
+- `test_parameter_types.py`: Different parameter type support (regular, keyword-only, positional-only)
+- `test_decorator_compatibility.py`: Interaction with other Python decorators
+- `test_thread_safety.py`: Thread safety and concurrent access tests
+- `test_performance.py`: Performance benchmarks and stress tests
+- `test_python_features.py`: Advanced Python feature compatibility
+
 ### Writing Tests
 
-- Place tests in the `tests/` directory
+- Place tests in the appropriate test file based on functionality
 - Use descriptive test names: `test_should_inject_dependency_when_registered`
 - Follow the AAA pattern: Arrange, Act, Assert
 - Use appropriate pytest markers
+- Import specific exceptions for error testing: `DependencyNotFoundError`, `CircularDependencyError`, etc.
 
 Example test:
 
 ```python
 import pytest
-from injectipy import InjectipyStore, Inject, inject
+from injectipy import DependencyScope, Inject, inject, DependencyNotFoundError
 
 @pytest.fixture
-def store():
-    return InjectipyStore()
+def scope():
+    return DependencyScope()
 
-def test_should_inject_registered_value(store):
+def test_should_inject_registered_value(scope):
     # Arrange
-    store.register_value("test_key", "test_value")
+    scope.register_value("test_key", "test_value")
 
     @inject
     def test_function(value: str = Inject["test_key"]):
         return value
 
-    # Act
-    result = test_function()
+    # Act & Assert
+    with scope:
+        result = test_function()
+        assert result == "test_value"
 
-    # Assert
-    assert result == "test_value"
+def test_should_raise_exception_for_missing_dependency(scope):
+    # Arrange
+    @inject
+    def test_function(value: str = Inject["missing_key"]):
+        return value
+
+    # Act & Assert
+    with scope:
+        with pytest.raises(DependencyNotFoundError, match="Dependency 'missing_key' not found"):
+            test_function()
 ```
 
 ## 🎨 Code Style
@@ -145,8 +170,6 @@ poetry run ruff check .
 # Type checking
 poetry run mypy injectipy/
 
-# Security scanning
-poetry run bandit -r injectipy/
 
 # Run all quality checks
 poetry run pre-commit run --all-files
@@ -166,19 +189,22 @@ poetry run pre-commit run --all-files
 Use Google-style docstrings:
 
 ```python
-def register_value(self, key: StoreKeyType, value: StoreValueType) -> None:
-    """Register a concrete value in the dependency store.
+def register_value(self, key: str | type, value: object) -> DependencyScope:
+    """Register a concrete value in the dependency scope.
 
     Args:
         key: The key to register the value under
         value: The value to register
 
+    Returns:
+        Self for method chaining
+
     Raises:
-        ValueError: If the key is already registered
+        DuplicateRegistrationError: If the key is already registered
 
     Example:
-        >>> store = InjectipyStore()
-        >>> store.register_value("config", {"debug": True})
+        >>> scope = DependencyScope()
+        >>> scope.register_value("config", {"debug": True})
     """
 ```
 
@@ -186,7 +212,7 @@ def register_value(self, key: StoreKeyType, value: StoreValueType) -> None:
 
 ### Core Components
 
-- **InjectipyStore**: Central dependency registry
+- **DependencyScope**: Context-managed dependency registry
 - **@inject decorator**: Function/method injection decorator
 - **Inject[key]**: Dependency marker for injection
 - **Thread Safety**: All operations are thread-safe

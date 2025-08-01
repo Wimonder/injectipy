@@ -1,53 +1,50 @@
 # Injectipy
 
-A lightweight, thread-safe dependency injection library for Python that provides clean, type-safe dependency management with minimal boilerplate.
+A Python dependency injection library using explicit scopes instead of global state. Provides type-safe dependency resolution with circular dependency detection.
 
 [![PyPI version](https://badge.fury.io/py/injectipy.svg)](https://badge.fury.io/py/injectipy)
-[![Python versions](https://img.shields.io/pypi/pyversions/injectipy.svg)](https://pypi.org/project/injectipy/)
+[![Python Version](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/github/license/Wimonder/injectipy.svg)](https://github.com/Wimonder/injectipy/blob/main/LICENSE)
 [![Tests](https://github.com/Wimonder/injectipy/workflows/CI/badge.svg)](https://github.com/Wimonder/injectipy/actions)
 [![Coverage](https://codecov.io/gh/Wimonder/injectipy/branch/main/graph/badge.svg)](https://codecov.io/gh/Wimonder/injectipy)
 
 ## Features
 
-✨ **Simple & Intuitive**: Clean API with minimal learning curve
-🔒 **Thread-Safe**: Built for concurrent applications
-🏷️ **Type-Safe**: Full mypy support with generic type hints
-🔄 **Circular Detection**: Automatic circular dependency detection
-⚡ **High Performance**: Optimized for speed with optional caching
-🧪 **Test-Friendly**: Easy mocking and test isolation
+- **Explicit scopes**: Dependencies managed within context managers, no global state
+- **Type safety**: Works with mypy for static type checking
+- **Circular dependency detection**: Detects dependency cycles at registration time
+- **Thread safety**: Each scope is isolated, safe for concurrent use
+- **Lazy evaluation**: Dependencies resolved only when accessed
+- **Test isolation**: Each test can use its own scope
 
 ## Quick Example
 
 ```python
-from injectipy import inject, Inject, injectipy_store
+from injectipy import inject, Inject, DependencyScope
+
+# Create a dependency scope
+scope = DependencyScope()
 
 # Register dependencies
-injectipy_store.register_value("config", {"database_url": "sqlite:///app.db"})
-injectipy_store.register_resolver("database", lambda: Database())
+scope.register_value("config", {"database_url": "sqlite:///app.db"})
+scope.register_resolver("database", lambda: Database())
 
 # Use dependency injection
 @inject
 def create_user(name: str, config: dict = Inject["config"], db: Database = Inject["database"]):
     return User.create(name, config["database_url"], db)
 
-# Dependencies are automatically injected
-user = create_user("Alice")
+# Use within scope context for automatic injection
+with scope:
+    user = create_user("Alice")
 ```
 
-## Why Injectipy?
+## Key Characteristics
 
-### 🚀 **Lightweight & Fast**
-No heavy frameworks or complex configuration. Just clean, fast dependency injection.
-
-### 🔧 **Developer Friendly**
-Intuitive API that works with your existing code. No need to restructure your application.
-
-### 🛡️ **Production Ready**
-Thread-safe, battle-tested, with comprehensive error handling and validation.
-
-### 🎯 **Type Safe**
-Full static type checking support. Catch dependency issues at development time, not runtime.
+- **No global state**: Each scope manages its own dependencies
+- **Context managers**: Use `with scope:` to activate dependency injection
+- **Type checking**: Works with mypy for compile-time validation
+- **Thread isolation**: Multiple threads can use separate or shared scopes safely
 
 ## Installation
 
@@ -61,50 +58,43 @@ Or with Poetry:
 poetry add injectipy
 ```
 
-## Getting Started
+## Documentation
 
-1. **[Installation](installation.md)** - Install injectipy in your project
-2. **[Quick Start](quickstart.md)** - Get up and running in 5 minutes
-3. **[Basic Usage](basic-usage.md)** - Learn the core concepts
-4. **[Advanced Patterns](advanced-patterns.md)** - Explore powerful features
+- [Installation](installation.md) - Install and verify setup
+- Basic usage examples in this document
+- [Examples](examples/) - Practical code examples
 
-## Core Components
+## Basic Usage
 
-### `@inject` Decorator
-Enable dependency injection on any function:
+### Function Injection
 
 ```python
+from injectipy import inject, Inject, DependencyScope
+
+scope = DependencyScope()
+scope.register_value("config", {"debug": True})
+
 @inject
-def my_function(service: MyService = Inject["service"]):
-    return service.do_something()
+def my_function(config: dict = Inject["config"]):
+    return config["debug"]
+
+with scope:
+    result = my_function()  # Returns True
 ```
 
-### `Inject[key]` Marker
-Type-safe parameter markers for dependency injection:
+### Factory Functions
 
 ```python
-def process_data(
-    data: list,
-    config: dict = Inject["config"],  # Inject by key
-    logger = Inject["logger"]         # Automatic type inference
-):
-    pass
-```
+def create_database(host=Inject["db_host"], port=Inject["db_port"]):
+    return Database(host, port)
 
-### `InjectipyStore` Container
-Thread-safe dependency container:
+scope = DependencyScope()
+scope.register_value("db_host", "localhost")
+scope.register_value("db_port", 5432)
+scope.register_resolver("database", create_database)
 
-```python
-from injectipy import injectipy_store
-
-# Register values
-injectipy_store.register_value("api_key", "secret")
-
-# Register factory functions
-injectipy_store.register_resolver("service", lambda: MyService())
-
-# Register with caching
-injectipy_store.register_resolver("db", create_database, cache=True)
+with scope:
+    db = scope["database"]  # Factory called with injected dependencies
 ```
 
 ## Use Cases
@@ -115,12 +105,11 @@ injectipy_store.register_resolver("db", create_database, cache=True)
 - **Microservices**: Clean dependency management across services
 - **Data Processing**: Inject processors, validators, and transformers
 
-## Community & Support
+## Links
 
-- 📖 **[Documentation](https://wimonder.github.io/injectipy/)**
-- 🐛 **[Issue Tracker](https://github.com/Wimonder/injectipy/issues)**
-- 💬 **[Discussions](https://github.com/Wimonder/injectipy/discussions)**
-- 📦 **[PyPI Package](https://pypi.org/project/injectipy/)**
+- [GitHub Repository](https://github.com/Wimonder/injectipy)
+- [Issue Tracker](https://github.com/Wimonder/injectipy/issues)
+- [PyPI Package](https://pypi.org/project/injectipy/)
 
 ## License
 

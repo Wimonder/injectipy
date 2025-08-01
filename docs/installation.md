@@ -2,8 +2,7 @@
 
 ## Requirements
 
-- Python 3.9 or higher
-- typing-extensions (automatically installed)
+- Python 3.11 or higher
 
 ## Install from PyPI
 
@@ -64,7 +63,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -e .
 
 # Install development dependencies
-pip install pytest pytest-cov black mypy ruff bandit pre-commit
+pip install pytest pytest-cov black mypy ruff pre-commit
 ```
 
 ## Verify Installation
@@ -76,16 +75,18 @@ import injectipy
 print(injectipy.__version__)
 
 # Test basic functionality
-from injectipy import inject, Inject, injectipy_store
+from injectipy import inject, Inject, DependencyScope
 
-injectipy_store.register_value("test", "Hello, World!")
+scope = DependencyScope()
+scope.register_value("test", "Hello, World!")
 
 @inject
 def test_function(message: str = Inject["test"]):
     return message
 
-result = test_function()
-print(result)  # Should print: Hello, World!
+with scope:
+    result = test_function()
+    print(result)  # Should print: Hello, World!
 ```
 
 ## Optional Dependencies
@@ -97,10 +98,7 @@ For development and testing:
 pip install black ruff mypy
 
 # Testing
-pip install pytest pytest-cov pytest-xdist pytest-benchmark
-
-# Security scanning
-pip install bandit
+pip install pytest pytest-cov
 
 # Pre-commit hooks
 pip install pre-commit
@@ -170,6 +168,4 @@ For optimal performance:
 
 ## Next Steps
 
-- 📖 [Quick Start Guide](quickstart.md)
-- 🎯 [Basic Usage](basic-usage.md)
-- 🔧 [Advanced Patterns](advanced-patterns.md)
+See the main README.md for usage examples and API documentation.

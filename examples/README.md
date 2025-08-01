@@ -1,16 +1,15 @@
 # Injectipy Examples
 
-This directory contains comprehensive examples demonstrating various patterns and use cases for the Injectipy dependency injection library.
+Code examples for the Injectipy dependency injection library using scope-based management.
 
 ## Examples Overview
 
 ### 1. `basic_usage.py`
-Demonstrates fundamental Injectipy patterns:
-- **Simple Values**: Register and inject configuration values
-- **Factory Functions**: Use factory functions as dependencies
-- **Singleton Pattern**: Create singleton dependencies with `evaluate_once=True`
-- **Class Constructor Injection**: Inject dependencies into class constructors
-- **Type-based Keys**: Use Python types as dependency keys
+Fundamental patterns:
+- Register static values and factory functions
+- Singleton pattern with `evaluate_once=True`
+- Class constructor injection
+- Type-based dependency keys
 
 **Run it:**
 ```bash
@@ -18,17 +17,11 @@ python examples/basic_usage.py
 ```
 
 ### 2. `advanced_patterns.py`
-Shows sophisticated dependency injection patterns:
-- **Protocol-based DI**: Use protocols for loose coupling
-- **Configuration-based Factories**: Create dependencies from configuration
-- **Layered Architecture**: Build complex service layers with DI
-- **Factory Dependencies**: Use factories to create specialized instances
-
-**Key concepts:**
-- Protocol-based dependency injection for better testability
-- Configuration management with dependency injection
+Complex patterns:
+- Protocol-based dependency injection
+- Configuration-driven factories
 - Multi-layer service architecture
-- Factory pattern with dependency injection
+- Factory pattern with DI
 
 **Run it:**
 ```bash
@@ -36,17 +29,11 @@ python examples/advanced_patterns.py
 ```
 
 ### 3. `testing_patterns.py`
-Demonstrates testing strategies with dependency injection:
-- **Isolated Store Testing**: Use separate stores for test isolation
-- **Mock Dependencies**: Replace real services with mocks for testing
-- **Integration Testing**: Test with real dependencies
-- **Pytest Fixtures**: Use pytest fixtures for reusable test setup
-
-**Key concepts:**
-- Test isolation with separate dependency stores
-- Mocking external services and databases
-- Unit vs integration testing approaches
-- Fixture-based test organization
+Testing strategies:
+- Isolated scope testing
+- Mock dependencies
+- Integration testing with real dependencies
+- Pytest fixtures for scope setup
 
 **Run it:**
 ```bash
@@ -57,23 +44,30 @@ python examples/testing_patterns.py
 
 ### 1. Basic Registration
 ```python
-from injectipy import injectipy_store, inject, Inject
+from injectipy import DependencyScope, inject, Inject
+
+# Create a scope
+scope = DependencyScope()
 
 # Register static values
-injectipy_store.register_value("config", {"debug": True})
+scope.register_value("config", {"debug": True})
 
 # Register factory functions
-injectipy_store.register_resolver("service", lambda: MyService())
+scope.register_resolver("service", lambda: MyService())
 
-# Use in functions
+# Use in functions within scope context
 @inject
 def my_function(config: dict = Inject["config"]):
     return config["debug"]
+
+with scope:
+    result = my_function()  # Automatic injection
 ```
 
 ### 2. Type-based Dependencies
 ```python
 from typing import Protocol
+from injectipy import DependencyScope, inject, Inject
 
 class ServiceProtocol(Protocol):
     def do_work(self) -> str: ...
@@ -82,49 +76,64 @@ class MyService:
     def do_work(self) -> str:
         return "work done"
 
-# Register with type as key
-injectipy_store.register_value(ServiceProtocol, MyService())
+# Create scope and register with type as key
+scope = DependencyScope()
+scope.register_value(ServiceProtocol, MyService())
 
 @inject
 def worker(service: ServiceProtocol = Inject[ServiceProtocol]):
     return service.do_work()
+
+with scope:
+    result = worker()  # Automatic injection
 ```
 
 ### 3. Singleton Pattern
 ```python
+from injectipy import DependencyScope
+
 class ExpensiveResource:
     def __init__(self):
         print("Creating expensive resource...")
 
-# Register with evaluate_once=True for singleton behavior
-injectipy_store.register_resolver(
+# Create scope and register with evaluate_once=True for singleton behavior
+scope = DependencyScope()
+scope.register_resolver(
     "resource",
     ExpensiveResource,
     evaluate_once=True
 )
+
+with scope:
+    resource1 = scope["resource"]  # Creates instance
+    resource2 = scope["resource"]  # Reuses same instance
+    assert resource1 is resource2
 ```
 
 ### 4. Testing with Mocks
 ```python
-# Create isolated store for testing
-test_store = InjectipyStore()
+from injectipy import DependencyScope, inject, Inject
+
+# Create isolated scope for testing
+test_scope = DependencyScope()
 
 # Register mock dependencies
 mock_service = MockService()
-test_store.register_value(ServiceProtocol, mock_service)
+test_scope.register_value(ServiceProtocol, mock_service)
 
-# Create object with test dependencies
-obj = MyClass(service=test_store[ServiceProtocol])
+# Create object with test dependencies within scope
+with test_scope:
+    obj = MyClass()  # Dependencies injected automatically
 ```
 
 ## Best Practices
 
-1. **Use Protocols**: Define interfaces with protocols for better testability
-2. **Prefer Type Keys**: Use types as keys when possible for better type safety
-3. **Singleton Pattern**: Use `evaluate_once=True` for expensive resources
-4. **Test Isolation**: Use separate stores or mocks for testing
-5. **Configuration**: Register configuration early in application startup
-6. **Factory Pattern**: Use factories for complex object creation
+1. **Always use `with scope:` context** for dependency injection
+2. **Use protocols** for better testability and loose coupling
+3. **Use `evaluate_once=True`** for expensive singleton resources
+4. **Create separate scopes** for different contexts (test, prod, etc.)
+5. **Register configuration early** in application startup
+6. **Use type keys** when possible for better type safety
 
 ## Running Examples
 
@@ -143,10 +152,7 @@ python basic_usage.py && python advanced_patterns.py && python testing_patterns.
 
 ## Example Output
 
-Each example produces detailed output showing:
-- Dependency registration
-- Automatic injection in action
-- Service interactions
-- Test execution results
-
-The examples are designed to be educational and demonstrate real-world usage patterns you can apply in your own applications.
+Each example shows:
+- Dependency registration and resolution
+- Service interactions within scopes
+- Test patterns with isolated dependencies

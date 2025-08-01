@@ -1,9 +1,7 @@
-from typing import Any, Generic, TypeVar, Union
-
-from typing_extensions import TypeAlias
+from typing import Any, Generic, TypeAlias, TypeVar
 
 T = TypeVar("T")
-InjectKeyType: TypeAlias = Union[str, type]
+InjectKeyType: TypeAlias = str | type
 
 
 class _TypingMeta(type):
@@ -30,11 +28,6 @@ class _Inject(Generic[T]):
         self._inject_key = inject_key
 
     def get_inject_key(self) -> InjectKeyType:
-        """Get the dependency key for store lookup.
-
-        Returns:
-            The key used to identify this dependency in the store
-        """
         return self._inject_key
 
     def __call__(self) -> T:
@@ -52,22 +45,22 @@ class Inject(_Inject, metaclass=_TypingMeta):
     maintaining type information for static analysis tools like mypy.
 
     Example:
-        >>> from injectipy import inject, Inject, injectipy_store
+        >>> from injectipy import inject, Inject, DependencyScope
         >>>
-        >>> # Register dependencies
-        >>> injectipy_store.register_value("api_key", "secret123")
-        >>> injectipy_store.register_value(str, "default_string")
+        >>> scope = DependencyScope()
+        >>> scope.register_value("api_key", "secret123")
+        >>> scope.register_value(str, "default_string")
         >>>
-        >>> # Use in function parameters
         >>> @inject
         >>> def my_function(
         ...     name: str,
-        ...     api_key: str = Inject["api_key"],      # String key
-        ...     default: str = Inject[str]             # Type key
+        ...     api_key: str = Inject["api_key"],
+        ...     default: str = Inject[str]
         ... ):
         ...     return f"{name}: {api_key}, {default}"
         >>>
-        >>> result = my_function("test")  # Dependencies auto-injected
+        >>> with scope:
+        ...     result = my_function("test")
 
     Type Safety:
         The Inject class maintains type information so that mypy and other

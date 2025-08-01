@@ -41,7 +41,7 @@ poetry run pytest
 poetry run pytest --cov=injectipy --cov-report=html
 
 # Run specific test files
-poetry run pytest tests/test_inject.py
+poetry run pytest tests/test_core_inject.py
 
 # Run performance tests
 poetry run pytest -m performance
@@ -81,9 +81,6 @@ poetry run ruff check .
 # Type checking
 poetry run mypy injectipy
 
-# Security scan
-poetry run bandit -r injectipy
-
 # Run all tests
 poetry run pytest
 ```
@@ -121,24 +118,28 @@ Example:
 ```python
 def register_resolver(
     self,
-    key: StoreKeyType,
-    resolver: Callable[..., T],
-    cache: bool = False
-) -> None:
+    key: str | type,
+    resolver: Callable[..., object],
+    *,
+    evaluate_once: bool = False
+) -> DependencyScope:
     """Register a resolver function for dependency injection.
 
     Args:
         key: The dependency key to register
         resolver: Function that creates the dependency instance
-        cache: Whether to cache the resolved instance
+        evaluate_once: Whether to cache the resolved instance
+
+    Returns:
+        Self for method chaining
 
     Raises:
-        ValueError: If key is already registered
-        TypeError: If resolver is not callable
+        DuplicateRegistrationError: If key is already registered
+        CircularDependencyError: If circular dependency detected
 
     Example:
-        >>> store.register_resolver("service", lambda: MyService())
-        >>> store.register_resolver("db", create_db_connection, cache=True)
+        >>> scope.register_resolver("service", lambda: MyService())
+        >>> scope.register_resolver("db", create_db_connection, evaluate_once=True)
     """
 ```
 
@@ -152,9 +153,9 @@ def register_resolver(
 Example test:
 
 ```python
-def test_register_resolver_with_caching():
-    """Test that resolver caching works correctly."""
-    store = InjectipyStore()
+def test_register_resolver_with_evaluate_once():
+    """Test that resolver evaluate_once works correctly."""
+    scope = DependencyScope()
     call_count = 0
 
     def expensive_resolver():
@@ -162,17 +163,18 @@ def test_register_resolver_with_caching():
         call_count += 1
         return f"result_{call_count}"
 
-    store.register_resolver("cached", expensive_resolver, cache=True)
+    scope.register_resolver("cached", expensive_resolver, evaluate_once=True)
 
-    # First call should execute resolver
-    result1 = store.resolve("cached")
-    assert result1 == "result_1"
-    assert call_count == 1
+    with scope:
+        # First call should execute resolver
+        result1 = scope["cached"]
+        assert result1 == "result_1"
+        assert call_count == 1
 
-    # Second call should use cached value
-    result2 = store.resolve("cached")
-    assert result2 == "result_1"  # Same result
-    assert call_count == 1  # Resolver not called again
+        # Second call should use cached value
+        result2 = scope["cached"]
+        assert result2 == "result_1"  # Same result
+        assert call_count == 1  # Resolver not called again
 ```
 
 ### Documentation
@@ -245,9 +247,9 @@ test: add performance benchmarks for large dependency graphs
 
 Releases are automated through GitHub Actions:
 
-1. **Version Bump**: Use the version manager script
+1. **Version Bump**: Use Poetry to bump version
    ```bash
-   python scripts/version_manager.py patch  # or minor/major
+   poetry version patch  # or minor/major
    ```
 
 2. **Update Changelog**: Add release notes to CHANGELOG.md

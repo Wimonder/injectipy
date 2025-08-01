@@ -2,16 +2,16 @@ import concurrent.futures
 import threading
 import time
 
-from injectipy.store import InjectipyStore
+from injectipy import DependencyScope
 
 
-def test_singleton_thread_safety():
-    """Test that singleton creation is thread-safe."""
+def test_scope_thread_safety():
+    """Test that scope creation is thread-safe."""
     instances = []
 
     def create_instance():
-        store = InjectipyStore()
-        instances.append(store)
+        scope = DependencyScope()
+        instances.append(scope)
 
     threads = []
     for _ in range(10):
@@ -24,13 +24,13 @@ def test_singleton_thread_safety():
     for thread in threads:
         thread.join()
 
-    # All instances should be the same object
-    assert len({id(instance) for instance in instances}) == 1
+    # Each should be a separate instance (scopes are not singletons)
+    assert len({id(instance) for instance in instances}) == 10
 
 
 def test_concurrent_registration():
     """Test that concurrent registration is thread-safe."""
-    store = InjectipyStore()
+    store = DependencyScope()
     results = []
     errors = []
 
@@ -65,7 +65,7 @@ def test_concurrent_registration():
 
 def test_concurrent_access():
     """Test that concurrent access to the store is thread-safe."""
-    store = InjectipyStore()
+    store = DependencyScope()
 
     # Pre-register some values with unique keys
     import time
@@ -106,7 +106,7 @@ def test_concurrent_access():
 
 def test_concurrent_resolver_execution():
     """Test that concurrent resolver execution is thread-safe."""
-    store = InjectipyStore()
+    store = DependencyScope()
     execution_count = 0
     execution_lock = threading.Lock()
 
@@ -144,7 +144,7 @@ def test_concurrent_resolver_execution():
 
 def test_concurrent_evaluate_once_resolver():
     """Test that evaluate_once resolvers are thread-safe and only execute once."""
-    store = InjectipyStore()
+    store = DependencyScope()
     execution_count = 0
     execution_lock = threading.Lock()
 
@@ -184,7 +184,7 @@ def test_concurrent_evaluate_once_resolver():
 
 def test_concurrent_mixed_operations():
     """Test concurrent registration and access operations."""
-    store = InjectipyStore()
+    store = DependencyScope()
     results = []
     errors = []
 

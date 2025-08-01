@@ -1,12 +1,12 @@
 """Advanced usage patterns for Injectipy dependency injection.
 
 This module demonstrates more sophisticated patterns and use cases
-for dependency injection in complex applications.
+for dependency injection with scope-based management in complex applications.
 """
 
 from typing import Any, Protocol
 
-from injectipy import Inject, inject, injectipy_store
+from injectipy import DependencyScope, Inject, inject
 
 # === Example 1: Protocol-based Dependency Injection ===
 
@@ -39,18 +39,15 @@ class MockEmailService:
         return True
 
 
-def setup_email_services():
+def setup_email_services(scope: DependencyScope):
     """Setup email service dependencies."""
-    # Register SMTP configuration
-    injectipy_store.register_value("smtp_host", "smtp.example.com")
-    injectipy_store.register_value("smtp_port", 587)
+    scope.register_value("smtp_host", "smtp.example.com")
+    scope.register_value("smtp_port", 587)
 
-    # Factory for creating SMTP service
     def create_smtp_service(host: str = Inject["smtp_host"], port: int = Inject["smtp_port"]) -> EmailServiceProtocol:
         return SMTPEmailService(host, port)
 
-    # Register the email service
-    injectipy_store.register_resolver(EmailServiceProtocol, create_smtp_service, evaluate_once=True)
+    scope.register_resolver(EmailServiceProtocol, create_smtp_service, evaluate_once=True)
 
 
 class NotificationService:
@@ -92,17 +89,15 @@ class DatabaseConnection:
         return [{"result": f"Executed: {query}"}]
 
 
-def setup_database():
+def setup_database(scope: DependencyScope):
     """Setup database-related dependencies."""
-    # Register database configuration
     db_config = DatabaseConfig(host="localhost", port=5432, database="myapp_prod", pool_size=20)
-    injectipy_store.register_value("db_config", db_config)
+    scope.register_value("db_config", db_config)
 
-    # Factory for database connection
     def create_db_connection(config: DatabaseConfig = Inject["db_config"]) -> DatabaseConnection:
         return DatabaseConnection(config)
 
-    injectipy_store.register_resolver("database", create_db_connection, evaluate_once=True)
+    scope.register_resolver("database", create_db_connection, evaluate_once=True)
 
 
 class UserRepository:
@@ -147,15 +142,15 @@ class RedisCache:
         return True
 
 
-def setup_cache():
+def setup_cache(scope: DependencyScope):
     """Setup cache dependencies."""
-    injectipy_store.register_value("redis_host", "localhost")
-    injectipy_store.register_value("redis_port", 6379)
+    scope.register_value("redis_host", "localhost")
+    scope.register_value("redis_port", 6379)
 
     def create_redis_cache(host: str = Inject["redis_host"], port: int = Inject["redis_port"]) -> CacheServiceProtocol:
         return RedisCache(host, port)
 
-    injectipy_store.register_resolver(CacheServiceProtocol, create_redis_cache, evaluate_once=True)
+    scope.register_resolver(CacheServiceProtocol, create_redis_cache, evaluate_once=True)
 
 
 class UserService:
@@ -173,26 +168,21 @@ class UserService:
         self.notification = notification
 
     def get_user_with_cache(self, user_id: int) -> dict[str, Any]:
-        # Try cache first
         cache_key = f"user_{user_id}"
         cached_user = self.cache.get(cache_key)
 
         if cached_user:
             return {"source": "cache", "data": cached_user}
 
-        # Fetch from database
         user = self.user_repo.find_user(user_id)
 
-        # Cache the result
         self.cache.set(cache_key, user, ttl=1800)
 
         return {"source": "database", "data": user}
 
     def create_user(self, email: str) -> dict[str, Any]:
-        # Simulate user creation
         user = {"email": email, "id": 123}
 
-        # Send welcome email
         self.notification.send_welcome_email(email)
 
         return user
@@ -223,10 +213,10 @@ class Logger:
         print(f"[{self.level}] {self.name}: {message}")
 
 
-def setup_logging():
+def setup_logging(scope: DependencyScope):
     """Setup logging dependencies."""
-    injectipy_store.register_value("log_level", "DEBUG")
-    injectipy_store.register_resolver(LoggerFactory, LoggerFactory, evaluate_once=True)
+    scope.register_value("log_level", "DEBUG")
+    scope.register_resolver(LoggerFactory, LoggerFactory, evaluate_once=True)
 
 
 class OrderService:
@@ -246,35 +236,36 @@ def main():
     print("Advanced Injectipy Patterns")
     print("=" * 50)
 
-    # Setup all dependencies
-    setup_email_services()
-    setup_database()
-    setup_cache()
-    setup_logging()
+    app_scope = DependencyScope()
 
-    # Register service dependencies
-    injectipy_store.register_resolver(UserRepository, UserRepository)
-    injectipy_store.register_resolver(NotificationService, NotificationService)
-    injectipy_store.register_resolver(UserService, UserService)
-    injectipy_store.register_resolver(OrderService, OrderService)
+    setup_email_services(app_scope)
+    setup_database(app_scope)
+    setup_cache(app_scope)
+    setup_logging(app_scope)
 
-    print("\n1. Protocol-based Email Service:")
-    notification_service = NotificationService()
-    notification_service.send_welcome_email("user@example.com")
+    app_scope.register_resolver(UserRepository, UserRepository)
+    app_scope.register_resolver(NotificationService, NotificationService)
+    app_scope.register_resolver(UserService, UserService)
+    app_scope.register_resolver(OrderService, OrderService)
 
-    print("\n2. Layered Architecture:")
-    user_service = UserService()
-    user_result = user_service.get_user_with_cache(123)
-    print(f"User result: {user_result}")
+    with app_scope:
+        print("\n1. Protocol-based Email Service:")
+        notification_service = NotificationService()
+        notification_service.send_welcome_email("user@example.com")
 
-    print("\n3. User Creation with Notification:")
-    new_user = user_service.create_user("newuser@example.com")
-    print(f"Created user: {new_user}")
+        print("\n2. Layered Architecture:")
+        user_service = UserService()
+        user_result = user_service.get_user_with_cache(123)
+        print(f"User result: {user_result}")
 
-    print("\n4. Factory Pattern:")
-    order_service = OrderService()
-    order_result = order_service.process_order(456)
-    print(f"Order result: {order_result}")
+        print("\n3. User Creation with Notification:")
+        new_user = user_service.create_user("newuser@example.com")
+        print(f"Created user: {new_user}")
+
+        print("\n4. Factory Pattern:")
+        order_service = OrderService()
+        order_result = order_service.process_order(456)
+        print(f"Order result: {order_result}")
 
     print("\n" + "=" * 50)
 

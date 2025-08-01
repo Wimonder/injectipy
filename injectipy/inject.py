@@ -1,73 +1,91 @@
 import functools
-from typing import Any, Callable, TypeVar, cast
+import inspect
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
+from injectipy.exceptions import DependencyNotFoundError, PositionalOnlyInjectionError
 from injectipy.models.inject import Inject
-from injectipy.store import injectipy_store
 
 F = TypeVar("F", bound=Callable[..., Any])
 
+if TYPE_CHECKING:
+    from injectipy.scope import DependencyScope
 
-def inject(fn: F) -> F:
+
+def inject(fn: F | None = None, *, scopes: list["DependencyScope"] | None = None) -> F | Callable[[F], F]:
     """Decorator to enable automatic dependency injection for function parameters.
 
     This decorator scans function parameters for Inject[key] annotations and
-    automatically resolves those dependencies from the global injectipy_store
-    when the function is called.
+    automatically resolves those dependencies from active dependency scopes.
+
+    Dependencies are resolved in this order:
+    1. Explicit scopes (if provided to the decorator)
+    2. Active scope stack (innermost scope wins)
 
     The decorator preserves the original function signature and only affects
     parameters that have Inject[key] default values. Regular parameters and
     arguments passed explicitly are handled normally.
 
-    Supports both regular parameters and keyword-only parameters with Inject defaults.
-    Also works with classmethod and staticmethod when applied in the correct order.
+    Works with regular parameters, keyword-only parameters, classmethod and staticmethod.
 
     Args:
         fn: The function, classmethod, or staticmethod to decorate
+        scopes: Optional list of explicit scopes to use for dependency resolution
 
     Returns:
         The decorated function with dependency injection enabled
 
     Raises:
-        RuntimeError: If a required dependency cannot be resolved from the store
+        DependencyNotFoundError: If a required dependency cannot be resolved
+        PositionalOnlyInjectionError: If trying to inject into positional-only parameter
 
-    Example:
-        >>> from injectipy import inject, Inject, injectipy_store
-        >>> injectipy_store.register_value("config", {"debug": True})
+    Examples:
+        Basic usage with active scopes:
+        >>> from injectipy import inject, Inject, DependencyScope
         >>>
-        >>> @inject
-        >>> def my_function(name: str, config: dict = Inject["config"]):
-        ...     return f"Hello {name}, debug={config['debug']}"
+        >>> with DependencyScope() as scope:
+        ...     scope.register_value("config", {"debug": True})
+        ...
+        ...     @inject
+        ...     def my_function(name: str, config: dict = Inject["config"]):
+        ...         return f"Hello {name}, debug={config['debug']}"
+        ...
+        ...     result = my_function("Alice")  # config automatically injected
+
+        With explicit scopes:
+        >>> scope = DependencyScope()
+        >>> scope.register_value("service", "TestService")
         >>>
-        >>> result = my_function("Alice")  # config automatically injected
-        >>> print(result)  # "Hello Alice, debug=True"
+        >>> @inject(scopes=[scope])
+        >>> def explicit_scoped_function(service: str = Inject["service"]):
+        ...     return service
 
     Note:
         - Only parameters with Inject[key] defaults are injected
         - Explicitly passed arguments always override injection
-        - The function can be called normally with all parameters if needed
-        - Supports both regular and keyword-only parameters
+        - Works with regular and keyword-only parameters
         - For classmethod/staticmethod: use @classmethod/@staticmethod first, then @inject
+        - Explicit scopes have highest priority, followed by active scopes
     """
-    # Handle classmethod and staticmethod objects
+
+    def decorator(func: F) -> F:
+        return _create_injected_function(func, scopes)
+
+    if fn is None:
+        # Called with arguments: @inject(scopes=[...])
+        return decorator
+    else:
+        # Called without arguments: @inject
+        return decorator(fn)
+
+
+def _create_injected_function(fn: F, explicit_scopes: list["DependencyScope"] | None = None) -> F:
+    """Create the actual injected function implementation."""
     is_classmethod = isinstance(fn, classmethod)
     is_staticmethod = isinstance(fn, staticmethod)
 
-    # Check for custom descriptors (objects with __get__ and func attributes)
-    is_custom_descriptor = (
-        hasattr(fn, "__get__")
-        and hasattr(fn, "func")
-        and not is_classmethod
-        and not is_staticmethod
-        and not callable(fn)
-    )
-
     if is_classmethod or is_staticmethod:
         original_func = fn.__func__  # type: ignore[attr-defined]
-        original_defaults = original_func.__defaults__
-        original_kwdefaults = original_func.__kwdefaults__
-    elif is_custom_descriptor:
-        # Handle custom descriptors that have a 'func' attribute
-        original_func = fn.func  # type: ignore[attr-defined]
         original_defaults = original_func.__defaults__
         original_kwdefaults = original_func.__kwdefaults__
     else:
@@ -75,7 +93,6 @@ def inject(fn: F) -> F:
         original_defaults = getattr(fn, "__defaults__", None)
         original_kwdefaults = getattr(fn, "__kwdefaults__", None)
 
-    # Check if there are any Inject defaults in either regular or keyword-only parameters
     has_inject_defaults = False
 
     if original_defaults:
@@ -91,59 +108,70 @@ def inject(fn: F) -> F:
 
     @functools.wraps(original_func)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
-        # Handle regular parameter defaults (__defaults__)
-        if original_defaults:
-            new_defaults = []
-            for default in original_defaults:
-                if isinstance(default, Inject):
-                    inject_key = default.get_inject_key()
-                    try:
-                        value = injectipy_store[inject_key]
-                    except KeyError as e:
-                        raise RuntimeError(
-                            f"Could not resolve {inject_key} for {original_func.__name__} in module {original_func.__module__}"
-                        ) from e
-                    new_defaults.append(value)
-                else:
-                    new_defaults.append(default)
-            original_func.__defaults__ = tuple(new_defaults)
+        resolved_kwargs = kwargs.copy()
+        sig = inspect.signature(original_func)
+        bound_args = sig.bind_partial(*args, **kwargs)
 
-        # Handle keyword-only parameter defaults (__kwdefaults__)
+        if original_defaults:
+            param_list = list(sig.parameters.values())
+            regular_params = [
+                p
+                for p in param_list
+                if p.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+            ]
+            params_with_defaults = regular_params[-len(original_defaults) :]
+
+            for param, default in zip(params_with_defaults, original_defaults, strict=False):
+                if isinstance(default, Inject):
+                    if param.name not in bound_args.arguments:
+                        inject_key = default.get_inject_key()
+                        try:
+                            from injectipy.scope import resolve_dependency
+
+                            resolved_value = resolve_dependency(inject_key, explicit_scopes)
+
+                            if param.kind == inspect.Parameter.POSITIONAL_ONLY:
+                                raise PositionalOnlyInjectionError(
+                                    function_name=original_func.__name__,
+                                    parameter_name=param.name,
+                                    dependency_key=inject_key,
+                                    module_name=getattr(original_func, "__module__", None),
+                                )
+                            else:
+                                resolved_kwargs[param.name] = resolved_value
+                        except DependencyNotFoundError as e:
+                            raise DependencyNotFoundError(
+                                key=inject_key,
+                                function_name=original_func.__name__,
+                                module_name=getattr(original_func, "__module__", None),
+                                parameter_name=param.name,
+                                available_keys=e.available_keys,
+                            ) from e
+
         if original_kwdefaults:
-            new_kwdefaults = {}
             for param_name, default in original_kwdefaults.items():
                 if isinstance(default, Inject):
-                    inject_key = default.get_inject_key()
-                    try:
-                        value = injectipy_store[inject_key]
-                    except KeyError as e:
-                        raise RuntimeError(
-                            f"Could not resolve {inject_key} for {original_func.__name__} in module {original_func.__module__}"
-                        ) from e
-                    new_kwdefaults[param_name] = value
-                else:
-                    new_kwdefaults[param_name] = default
-            original_func.__kwdefaults__ = new_kwdefaults
+                    if param_name not in resolved_kwargs:
+                        inject_key = default.get_inject_key()
+                        try:
+                            from injectipy.scope import resolve_dependency
 
-        try:
-            # Always call the original function directly since we've modified its defaults
-            return_value = original_func(*args, **kwargs)
-        finally:
-            # Always restore original defaults, even if function raises an exception
-            original_func.__defaults__ = original_defaults
-            original_func.__kwdefaults__ = original_kwdefaults
+                            resolved_kwargs[param_name] = resolve_dependency(inject_key, explicit_scopes)
+                        except DependencyNotFoundError as e:
+                            raise DependencyNotFoundError(
+                                key=inject_key,
+                                function_name=original_func.__name__,
+                                module_name=getattr(original_func, "__module__", None),
+                                parameter_name=param_name,
+                                available_keys=e.available_keys,
+                            ) from e
 
-        return return_value
+        return original_func(*args, **resolved_kwargs)
 
-    # Return appropriate wrapper based on function type
     if is_classmethod:
         return cast(F, classmethod(wrapper))
     elif is_staticmethod:
         return cast(F, staticmethod(wrapper))
-    elif is_custom_descriptor:
-        # Create a new descriptor instance with the wrapped function
-        descriptor_class = type(fn)
-        return cast(F, descriptor_class(wrapper))  # type: ignore[misc]
     else:
         return cast(F, wrapper)
 
