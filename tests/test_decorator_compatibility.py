@@ -374,10 +374,10 @@ class TestComplexDecoratorInteractions:
             @custom_decorator
             @inject
             def documented_function(service: str = Inject["service"]) -> str:
-                """This function has comprehensive documentation."""
+                """This function has documentation."""
                 return f"Result: {service}"
 
             # Check that metadata is preserved
-            assert documented_function.__doc__ == "This function has comprehensive documentation."
+            assert documented_function.__doc__ == "This function has documentation."
             assert hasattr(documented_function, "custom_meta")
             assert documented_function.custom_meta == "added_by_decorator"

@@ -179,7 +179,7 @@ def test_register_resolver_with_evaluate_once():
 
 ### Documentation
 
-- **API Docs**: All public functions need comprehensive docstrings
+- **API Docs**: All public functions need docstrings
 - **User Docs**: Update user documentation for new features
 - **Examples**: Include practical examples in docstrings and docs
 - **Changelog**: Add entries to CHANGELOG.md for user-facing changes
