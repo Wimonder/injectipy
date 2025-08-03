@@ -691,19 +691,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Changelog
 
-### Version 0.3.0 (2025-01-03)
-- **NEW**: `@ainject` decorator for clean async dependency injection
-- **NEW**: `AsyncDependencyError` with helpful error messages guiding users to correct decorator
-- **BREAKING**: `@inject` now strictly rejects async dependencies (use `@ainject` instead)
-- **Enhanced**: Strict separation between sync and async dependency injection
-- **Performance**: Optimized async resolver detection with caching
-- **Documentation**: Updated README with comprehensive async/await examples
-
-### Version 0.1.0 (2024-01-20)
-- **Initial release** of Injectipy dependency injection library
-- **Core features**: `@inject` decorator, `Inject[key]` markers, `DependencyScope` context managers
-- **Advanced capabilities**: Thread safety, circular dependency detection, lazy evaluation
-- **Modern Python**: Python 3.11+ support with native union types
-- **Developer experience**: Type safety with mypy, comprehensive testing
-
-See [CHANGELOG.md](CHANGELOG.md) for complete details.
+See [CHANGELOG.md](CHANGELOG.md) for complete release history and details.
