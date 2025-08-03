@@ -2,6 +2,7 @@
 
 A dependency injection library for Python that uses explicit scopes instead of global state. Provides type-safe dependency resolution with circular dependency detection.
 
+[![PyPI version](https://badge.fury.io/py/injectipy.svg)](https://badge.fury.io/py/injectipy)
 [![Python Version](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Type Checked](https://img.shields.io/badge/typed-mypy-blue.svg)](https://mypy.readthedocs.io/)
