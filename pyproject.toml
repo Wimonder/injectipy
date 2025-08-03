@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "injectipy"
-version = "0.1.0"
+version = "0.2.0"
 description = "A dependency injection library for Python that uses explicit scopes instead of global state"
 authors = ["Wim Onderbeke <wim.onderbeke@hotmail.com>"]
 readme = "README.md"

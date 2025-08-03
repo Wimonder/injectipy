@@ -465,6 +465,60 @@ for thread in threads:
     thread.join()
 ```
 
+## Async/Await Support
+
+DependencyScope supports both sync and async context managers:
+
+```python
+import asyncio
+from injectipy import DependencyScope, inject, Inject
+
+scope = DependencyScope()
+scope.register_value("api_key", "secret-key")
+
+@inject
+async def fetch_data(endpoint: str, api_key: str = Inject["api_key"]) -> dict:
+    # Simulate async API call
+    await asyncio.sleep(0.1)
+    return {"endpoint": endpoint, "authenticated": bool(api_key)}
+
+async def main():
+    async with scope:  # Use async context manager
+        data = await fetch_data("/users")
+        print(data)
+
+asyncio.run(main())
+```
+
+### Concurrent Async Tasks
+
+Each task gets proper context isolation:
+
+```python
+async def concurrent_example():
+    async def task_with_scope(task_id: int):
+        task_scope = DependencyScope()
+        task_scope.register_value("task_id", task_id)
+
+        async with task_scope:
+            @inject
+            async def process_task(task_id: int = Inject["task_id"]) -> str:
+                await asyncio.sleep(0.1)
+                return f"Processed task {task_id}"
+
+            return await process_task()
+
+    # Run multiple tasks concurrently with proper isolation
+    results = await asyncio.gather(
+        task_with_scope(1),
+        task_with_scope(2),
+        task_with_scope(3)
+    )
+    print(results)  # ['Processed task 1', 'Processed task 2', 'Processed task 3']
+
+asyncio.run(concurrent_example())
+```
+
 ## API Reference
 
 ### Core Components

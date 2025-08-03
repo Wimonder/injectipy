@@ -1,8 +1,10 @@
 """Dependency scope management with context managers for explicit scoping."""
 
+import asyncio
+import contextvars
 import inspect
 import threading
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Coroutine, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, TypeAlias, TypeVar, overload
@@ -20,7 +22,10 @@ T = TypeVar("T")
 StoreKeyType: TypeAlias = str | type
 StoreResolverType: TypeAlias = Callable[..., Any]
 
-_scope_stack: threading.local = threading.local()
+# Context variable for scope stack - works for both threads and async tasks
+_scope_stack: contextvars.ContextVar[list["DependencyScope"]] = contextvars.ContextVar(
+    "injectipy_scope_stack", default=[]
+)
 
 
 @dataclass(frozen=True)
@@ -33,9 +38,16 @@ _StoreValueType = _StoreResolverWithArgs | Any
 
 
 def _get_scope_stack() -> list["DependencyScope"]:
-    if not hasattr(_scope_stack, "scopes"):
-        _scope_stack.scopes = []
-    return _scope_stack.scopes  # type: ignore[no-any-return]
+    """Get the current scope stack from context variables.
+
+    This works correctly for both threading and asyncio contexts.
+    """
+    return _scope_stack.get().copy()
+
+
+def _set_scope_stack(stack: list["DependencyScope"]) -> None:
+    """Set the scope stack in the current context."""
+    _scope_stack.set(stack)
 
 
 class DependencyScope:
@@ -112,6 +124,40 @@ class DependencyScope:
             self._check_circular_dependencies(key, resolver)
             self._registry[key] = _StoreResolverWithArgs(resolver, evaluate_once)
         return self
+
+    def register_async_resolver(
+        self, key: StoreKeyType, async_resolver: Callable[..., Coroutine[Any, Any, Any]], *, evaluate_once: bool = False
+    ) -> "DependencyScope":
+        """Register an async factory function.
+
+        Args:
+            key: The dependency key
+            async_resolver: Async factory function that creates the dependency
+            evaluate_once: If True, cache the result after first evaluation
+
+        Returns:
+            Self for method chaining
+
+        Raises:
+            DuplicateRegistrationError: If key already exists in this scope
+            CircularDependencyError: If circular dependency detected
+        """
+
+        def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
+            # Check if we're in an async context
+            try:
+                loop = asyncio.get_running_loop()
+                # If we're already in an async context, run the coroutine directly
+                # Note: This creates a coroutine that needs to be awaited
+                coro = async_resolver(*args, **kwargs)
+                # Create a task to run it
+                task = loop.create_task(coro)
+                return task
+            except RuntimeError:
+                # If not in async context, run it synchronously
+                return asyncio.run(async_resolver(*args, **kwargs))
+
+        return self.register_resolver(key, sync_wrapper, evaluate_once=evaluate_once)
 
     def _raise_if_key_already_registered(self, key: StoreKeyType) -> None:
         if key in self._registry:
@@ -247,19 +293,40 @@ class DependencyScope:
         return key in self._registry
 
     def __enter__(self) -> "DependencyScope":
-        """Enter the scope context."""
+        """Sync context manager entry - works for both sync and async contexts."""
         stack = _get_scope_stack()
-        stack.append(self)
+        new_stack = stack + [self]
+        _set_scope_stack(new_stack)
         self._active = True
         return self
 
     def __exit__(self, _exc_type: Any, _exc_val: Any, _exc_tb: Any) -> None:
-        """Exit the scope context and clean up."""
+        """Sync context manager exit - works for both sync and async contexts."""
         stack = _get_scope_stack()
         if stack and stack[-1] is self:
-            stack.pop()
+            new_stack = stack[:-1]
+            _set_scope_stack(new_stack)
         self._active = False
-        # Clean up the scope's store
+        with self._registry_lock:
+            self._registry.clear()
+            self._cache.clear()
+
+    async def __aenter__(self) -> "DependencyScope":
+        """Async context manager entry."""
+        stack = _get_scope_stack()
+        new_stack = stack + [self]
+        _set_scope_stack(new_stack)
+        self._active = True
+        return self
+
+    async def __aexit__(self, _exc_type: Any, _exc_val: Any, _exc_tb: Any) -> None:
+        """Async context manager exit with cleanup."""
+        stack = _get_scope_stack()
+        if stack and stack[-1] is self:
+            new_stack = stack[:-1]
+            _set_scope_stack(new_stack)
+        self._active = False
+        # Use regular synchronous cleanup - registry operations are already thread-safe
         with self._registry_lock:
             self._registry.clear()
             self._cache.clear()
@@ -345,12 +412,11 @@ def get_active_scopes() -> list[DependencyScope]:
 
 
 def clear_scope_stack() -> None:
-    """Clear the scope stack for the current thread.
+    """Clear the scope stack for the current context (thread or async task).
 
     This is primarily for testing purposes to ensure clean state.
     """
-    if hasattr(_scope_stack, "scopes"):
-        _scope_stack.scopes = []
+    _set_scope_stack([])
 
 
 __all__ = [

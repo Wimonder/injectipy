@@ -2,7 +2,8 @@
 
 This package provides a simple yet powerful dependency injection system with:
 - Explicit dependency scopes with context managers
-- Thread-safe scope management
+- Thread-safe scope management with contextvars support
+- Async/await support with proper context isolation
 - Circular dependency detection
 - Type safety with mypy support
 - Lazy evaluation with optional caching
@@ -31,6 +32,7 @@ Components:
     dependency_scope: Convenience function for creating scopes
 """
 
+from .async_utils import gather_with_scope_isolation, run_with_scope_context
 from .exceptions import (
     CircularDependencyError,
     DependencyError,
@@ -53,7 +55,7 @@ from .scope import (
     resolve_dependency,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = [
     "inject",
     "Inject",
@@ -62,6 +64,8 @@ __all__ = [
     "resolve_dependency",
     "get_active_scopes",
     "clear_scope_stack",
+    "run_with_scope_context",
+    "gather_with_scope_isolation",
     "__version__",
     "InjectipyError",
     "DependencyError",
