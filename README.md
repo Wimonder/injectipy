@@ -449,6 +449,10 @@ Check if this scope is currently active (within a `with` block).
 - `__enter__()`: Activate the scope
 - `__exit__()`: Deactivate the scope and clean up
 
+## Documentation
+
+Full documentation is available at [wimonder.github.io/injectipy](https://wimonder.github.io/injectipy/).
+
 ## Development
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and contribution guidelines.

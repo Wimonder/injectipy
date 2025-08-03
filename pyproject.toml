@@ -8,7 +8,7 @@ license = "MIT"
 keywords = ["dependency injection"]
 homepage = "https://github.com/Wimonder/injectipy"
 repository = "https://github.com/Wimonder/injectipy"
-documentation = "https://github.com/Wimonder/injectipy"
+documentation = "https://wimonder.github.io/injectipy/"
 
 [tool.poetry.dependencies]
 python = "^3.11"
