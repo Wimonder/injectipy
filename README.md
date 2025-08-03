@@ -10,12 +10,12 @@ A dependency injection library for Python that uses explicit scopes instead of g
 ## Key Features
 
 - **Explicit scopes**: Dependencies managed within context managers, no global state
-- **Async/await support**: Clean async dependency injection with `@ainject` decorator
 - **Type safety**: Works with mypy and provides runtime type checking
-- **Circular dependency detection**: Detects dependency cycles at registration time
-- **Thread safety**: Each scope is isolated, safe for concurrent use
 - **Lazy evaluation**: Dependencies resolved only when accessed
+- **Thread safety**: Each scope is isolated, safe for concurrent use
 - **Test isolation**: Each test can use its own scope with different dependencies
+- **Circular dependency detection**: Detects dependency cycles at registration time
+- **Async/await support**: Async dependency injection with `@ainject` decorator
 
 ## Installation
 
@@ -53,6 +53,134 @@ with scope:
     print(user)  # "User 123 from Connected to postgresql://localhost/mydb"
 ```
 
+### Factory Functions with Dependencies
+
+```python
+from injectipy import inject, Inject, DependencyScope
+
+# Create and configure a scope
+scope = DependencyScope()
+
+# Register configuration
+scope.register_value("api_key", "secret123")
+scope.register_value("base_url", "https://api.example.com")
+
+# Factory function that depends on other registered dependencies
+def create_api_client(
+    api_key: str = Inject["api_key"],
+    base_url: str = Inject["base_url"]
+):
+    return f"APIClient(key={api_key}, url={base_url})"
+
+# Register the factory
+scope.register_resolver("api_client", create_api_client)
+
+# Use in your code within scope context
+@inject
+def fetch_data(client = Inject["api_client"]):
+    return f"Fetching data with {client}"
+
+with scope:
+    print(fetch_data())
+```
+
+### Type-Based Registration
+
+Use types directly as keys for enhanced type safety:
+
+```python
+from typing import Protocol
+from injectipy import inject, Inject, DependencyScope
+
+class DatabaseProtocol(Protocol):
+    def query(self, sql: str) -> list: ...
+
+class PostgreSQLDatabase:
+    def query(self, sql: str) -> list:
+        return ["result1", "result2"]
+
+class CacheService:
+    def get(self, key: str) -> str | None:
+        return f"cached_{key}"
+
+# Register dependencies using types as keys
+scope = DependencyScope()
+scope.register_value(DatabaseProtocol, PostgreSQLDatabase())
+scope.register_value(CacheService, CacheService())
+
+@inject
+def process_user(
+    user_id: int,
+    db: DatabaseProtocol = Inject[DatabaseProtocol],
+    cache: CacheService = Inject[CacheService]
+) -> str:
+    users = db.query("SELECT * FROM users WHERE id = ?")
+    cached_data = cache.get(f"user_{user_id}")
+    return f"User data: {users}, cached: {cached_data}"
+
+with scope:
+    # Full type safety - mypy knows exact types
+    result = process_user(123)
+```
+
+### Class-based Injection
+
+```python
+from injectipy import inject, Inject, DependencyScope
+
+# Create and configure a scope
+scope = DependencyScope()
+scope.register_value("db_connection", "PostgreSQL://localhost")
+scope.register_value("config", "production_config")
+
+class UserService:
+    @inject
+    def __init__(self, db_connection: str = Inject["db_connection"]):
+        self.db = db_connection
+
+    def get_user(self, user_id: int):
+        return f"User {user_id} from {self.db}"
+
+    @inject
+    @classmethod
+    def create_service(cls, config: str = Inject["config"]):
+        return cls()
+
+# Use within scope context for dependency injection
+with scope:
+    service = UserService()
+    print(service.get_user(456))
+```
+
+## Advanced Usage
+
+### Singleton Pattern with `evaluate_once`
+
+```python
+from injectipy import DependencyScope
+import time
+
+def expensive_resource():
+    print("Creating expensive resource...")
+    time.sleep(1)  # Simulate expensive operation
+    return "ExpensiveResource"
+
+# Create scope and register with evaluate_once=True for singleton behavior
+scope = DependencyScope()
+scope.register_resolver(
+    "expensive_resource",
+    expensive_resource,
+    evaluate_once=True
+)
+
+with scope:
+    # First access creates the resource
+    resource1 = scope["expensive_resource"]  # Prints "Creating..."
+    resource2 = scope["expensive_resource"]  # No print, reuses cached
+
+    assert resource1 is resource2  # Same instance
+```
+
 ### Async/Await Support with `@ainject`
 
 Injectipy provides strict separation between sync and async dependency injection:
@@ -60,11 +188,9 @@ Injectipy provides strict separation between sync and async dependency injection
 - **`@inject`**: Only works with sync dependencies. **Rejects async dependencies with clear error messages.**
 - **`@ainject`**: Designed for async functions, automatically awaits async dependencies before function execution.
 
-The `@ainject` decorator provides clean async dependency injection by automatically awaiting async dependencies:
-
 ```python
 import asyncio
-from injectipy import ainject, Inject, DependencyScope
+from injectipy import ainject, inject, Inject, DependencyScope
 
 # Create a scope with async dependencies
 scope = DependencyScope()
@@ -111,101 +237,6 @@ asyncio.run(main())
 - **Type safety**: Eliminates manual `hasattr(..., '__await__')` checks
 - **Clean code**: `@ainject` pre-resolves all dependencies before function execution
 
-### Class-based Injection
-
-```python
-from injectipy import inject, Inject, DependencyScope
-
-# Create and configure a scope
-scope = DependencyScope()
-scope.register_value("db_connection", "PostgreSQL://localhost")
-scope.register_value("config", "production_config")
-scope.register_value("helper", "UtilityHelper")
-
-class UserService:
-    @inject
-    def __init__(self, db_connection: str = Inject["db_connection"]):
-        self.db = db_connection
-
-    def get_user(self, user_id: int):
-        return f"User {user_id} from {self.db}"
-
-    @inject
-    @classmethod
-    def create_service(cls, config: str = Inject["config"]):
-        return cls()
-
-    @inject
-    @staticmethod
-    def utility_function(helper: str = Inject["helper"]):
-        return f"Helper: {helper}"
-
-# Use within scope context for dependency injection
-with scope:
-    service = UserService()
-    print(service.get_user(456))
-```
-
-### Factory Functions with Dependencies
-
-```python
-from injectipy import inject, Inject, DependencyScope
-
-# Create and configure a scope
-scope = DependencyScope()
-
-# Register configuration
-scope.register_value("api_key", "secret123")
-scope.register_value("base_url", "https://api.example.com")
-
-# Factory function that depends on other registered dependencies
-def create_api_client(
-    api_key: str = Inject["api_key"],
-    base_url: str = Inject["base_url"]
-):
-    return f"APIClient(key={api_key}, url={base_url})"
-
-# Register the factory
-scope.register_resolver("api_client", create_api_client)
-
-# Use in your code within scope context
-@inject
-def fetch_data(client = Inject["api_client"]):
-    return f"Fetching data with {client}"
-
-with scope:
-    print(fetch_data())
-```
-
-### Singleton Pattern with `evaluate_once`
-
-```python
-from injectipy import DependencyScope
-import time
-
-def expensive_resource():
-    print("Creating expensive resource...")
-    time.sleep(1)  # Simulate expensive operation
-    return "ExpensiveResource"
-
-# Create scope and register with evaluate_once=True for singleton behavior
-scope = DependencyScope()
-scope.register_resolver(
-    "expensive_resource",
-    expensive_resource,
-    evaluate_once=True
-)
-
-with scope:
-    # First access creates the resource
-    resource1 = scope["expensive_resource"]  # Prints "Creating..."
-    resource2 = scope["expensive_resource"]  # No print, reuses cached
-
-    assert resource1 is resource2  # Same instance
-```
-
-## Advanced Usage
-
 ### Keyword-Only Parameters
 
 The `@inject` decorator supports keyword-only parameters:
@@ -230,142 +261,6 @@ with scope:
     # Override specific parameters
     result = process_data("user_data", cache="MemoryCache", debug=True)
     print(result)  # "Processing user_data with ProductionDB, MemoryCache, debug=True"
-```
-
-### Decorator Compatibility
-
-The `@inject` decorator works with other Python decorators. Order matters:
-
-```python
-from injectipy import inject, Inject, DependencyScope
-
-# Create scope and register dependencies
-scope = DependencyScope()
-scope.register_value("logger", "ProductionLogger")
-
-class APIService:
-    # ✅ Recommended order: @inject comes after @classmethod/@staticmethod
-    @inject
-    @classmethod
-    def create_from_config(cls, logger=Inject["logger"]):
-        return cls(logger)
-
-    @inject
-    @staticmethod
-    def validate_data(data, logger=Inject["logger"]):
-        print(f"Validating with {logger}")
-        return True
-
-# Works with other decorators too
-def timer_decorator(func):
-    def wrapper(*args, **kwargs):
-        result = func(*args, **kwargs)
-        return f"timed({result})"
-    return wrapper
-
-@timer_decorator
-@inject
-def process_data(data, logger=Inject["logger"]):
-    return f"Processed {data} with {logger}"
-
-with scope:
-    result = process_data("user_data")
-    print(result)  # "timed(Processed user_data with ProductionLogger)"
-```
-
-**Decorator ordering rules:**
-- `@inject` comes after `@classmethod` or `@staticmethod`
-- `@inject` comes after other decorators (`@contextmanager`, `@lru_cache`, `@property`)
-- Apply `@inject` last (closest to the function definition)
-
-```python
-# Correct order
-@classmethod
-@inject
-def create_service(cls, dep=Inject["service"]): ...
-
-@lru_cache(maxsize=128)
-@inject
-def cached_func(dep=Inject["service"]): ...
-```
-
-### Type-Based Registration and Injection
-
-Use types directly as keys for enhanced type safety:
-
-```python
-from typing import Protocol
-from injectipy import inject, Inject, DependencyScope
-
-class DatabaseProtocol(Protocol):
-    def query(self, sql: str) -> list: ...
-
-class PostgreSQLDatabase:
-    def query(self, sql: str) -> list:
-        return ["result1", "result2"]
-
-class CacheService:
-    def get(self, key: str) -> str | None:
-        return f"cached_{key}"
-
-class ConfigService:
-    def __init__(self, env: str):
-        self.env = env
-
-    def get_database_url(self) -> str:
-        return f"postgresql://localhost/{self.env}"
-
-# Register dependencies using types as keys
-scope = DependencyScope()
-scope.register_value(DatabaseProtocol, PostgreSQLDatabase())
-scope.register_value(CacheService, CacheService())
-scope.register_value(ConfigService, ConfigService("production"))
-
-@inject
-def process_user(
-    user_id: int,
-    db: DatabaseProtocol = Inject[DatabaseProtocol],
-    cache: CacheService = Inject[CacheService],
-    config: ConfigService = Inject[ConfigService]
-) -> str:
-    users = db.query("SELECT * FROM users WHERE id = ?")
-    cached_data = cache.get(f"user_{user_id}")
-    db_url = config.get_database_url()
-    return f"User data: {users}, cached: {cached_data}, db: {db_url}"
-
-with scope:
-    # Full type safety - mypy knows exact types
-    result = process_user(123)
-```
-
-### String-Based Registration
-
-You can also use string keys for more flexible scenarios:
-
-```python
-from typing import Protocol
-from injectipy import inject, Inject, DependencyScope
-
-class DatabaseProtocol(Protocol):
-    def query(self, sql: str) -> list: ...
-
-class PostgreSQLDatabase:
-    def query(self, sql: str) -> list:
-        return ["result1", "result2"]
-
-# Create scope and register with string keys
-scope = DependencyScope()
-scope.register_value("database", PostgreSQLDatabase())
-scope.register_value("app_name", "MyApp")
-
-@inject
-def get_users(db: DatabaseProtocol = Inject["database"], app: str = Inject["app_name"]) -> list:
-    print(f"Querying from {app}")
-    return db.query("SELECT * FROM users")
-
-with scope:
-    # mypy will verify types correctly
-    users: list = get_users()
 ```
 
 
@@ -544,60 +439,6 @@ for i in range(10):
 
 for thread in threads:
     thread.join()
-```
-
-## Async/Await Support
-
-DependencyScope supports both sync and async context managers:
-
-```python
-import asyncio
-from injectipy import DependencyScope, inject, Inject
-
-scope = DependencyScope()
-scope.register_value("api_key", "secret-key")
-
-@inject
-async def fetch_data(endpoint: str, api_key: str = Inject["api_key"]) -> dict:
-    # Simulate async API call
-    await asyncio.sleep(0.1)
-    return {"endpoint": endpoint, "authenticated": bool(api_key)}
-
-async def main():
-    async with scope:  # Use async context manager
-        data = await fetch_data("/users")
-        print(data)
-
-asyncio.run(main())
-```
-
-### Concurrent Async Tasks
-
-Each task gets proper context isolation:
-
-```python
-async def concurrent_example():
-    async def task_with_scope(task_id: int):
-        task_scope = DependencyScope()
-        task_scope.register_value("task_id", task_id)
-
-        async with task_scope:
-            @inject
-            async def process_task(task_id: int = Inject["task_id"]) -> str:
-                await asyncio.sleep(0.1)
-                return f"Processed task {task_id}"
-
-            return await process_task()
-
-    # Run multiple tasks concurrently with proper isolation
-    results = await asyncio.gather(
-        task_with_scope(1),
-        task_with_scope(2),
-        task_with_scope(3)
-    )
-    print(results)  # ['Processed task 1', 'Processed task 2', 'Processed task 3']
-
-asyncio.run(concurrent_example())
 ```
 
 ## API Reference
