@@ -40,6 +40,18 @@ Testing strategies:
 python examples/testing_patterns.py
 ```
 
+### 4. `async_patterns.py`
+Async/await patterns:
+- Async context managers
+- Async resolvers and factory functions
+- Concurrent async tasks with proper isolation
+- Mixed sync/async dependency resolution
+
+**Run it:**
+```bash
+python examples/async_patterns.py
+```
+
 ## Common Patterns Summary
 
 ### 1. Basic Registration
@@ -110,7 +122,29 @@ with scope:
     assert resource1 is resource2
 ```
 
-### 4. Testing with Mocks
+### 4. Async/Await Support
+```python
+import asyncio
+from injectipy import DependencyScope, inject, Inject
+
+scope = DependencyScope()
+scope.register_value("api_key", "secret-key")
+
+@inject
+async def fetch_data(endpoint: str, api_key: str = Inject["api_key"]) -> dict:
+    # Simulate async API call
+    await asyncio.sleep(0.1)
+    return {"endpoint": endpoint, "authenticated": bool(api_key)}
+
+async def main():
+    async with scope:  # Use async context manager
+        data = await fetch_data("/users")
+        print(data)
+
+asyncio.run(main())
+```
+
+### 5. Testing with Mocks
 ```python
 from injectipy import DependencyScope, inject, Inject
 

@@ -87,6 +87,29 @@ class PositionalOnlyInjectionError(InjectionError):
         super().__init__(message)
 
 
+class AsyncDependencyError(InjectionError):
+    """Raised when attempting to use @inject with async dependencies."""
+
+    def __init__(
+        self,
+        function_name: str,
+        parameter_name: str,
+        dependency_key: str | type,
+        module_name: str | None = None,
+    ):
+        self.function_name = function_name
+        self.parameter_name = parameter_name
+        self.dependency_key = dependency_key
+        self.module_name = module_name
+
+        module_info = f" in module {module_name}" if module_name else ""
+        super().__init__(
+            f"Cannot use @inject with async dependency '{dependency_key}' "
+            f"for parameter '{parameter_name}' in function '{function_name}'{module_info}. "
+            f"Use @ainject instead for async dependency injection."
+        )
+
+
 class StoreOperationError(InjectipyError):
     """Base class for errors in store operations.
 
@@ -114,6 +137,7 @@ __all__ = [
     "ParameterValidationError",
     "InjectionError",
     "PositionalOnlyInjectionError",
+    "AsyncDependencyError",
     "StoreOperationError",
     "InvalidStoreOperationError",
 ]

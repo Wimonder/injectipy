@@ -40,3 +40,4 @@ jobs:
       run: |
         poetry run python examples/basic_usage.py
         poetry run python examples/advanced_patterns.py
+        poetry run python examples/async_patterns.py

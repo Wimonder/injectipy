@@ -34,6 +34,7 @@ Components:
 
 from .async_utils import gather_with_scope_isolation, run_with_scope_context
 from .exceptions import (
+    AsyncDependencyError,
     CircularDependencyError,
     DependencyError,
     DependencyNotFoundError,
@@ -45,7 +46,7 @@ from .exceptions import (
     PositionalOnlyInjectionError,
     StoreOperationError,
 )
-from .inject import inject
+from .inject import ainject, inject
 from .models.inject import Inject
 from .scope import (
     DependencyScope,
@@ -55,9 +56,10 @@ from .scope import (
     resolve_dependency,
 )
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __all__ = [
     "inject",
+    "ainject",
     "Inject",
     "DependencyScope",
     "dependency_scope",
@@ -75,6 +77,7 @@ __all__ = [
     "ParameterValidationError",
     "InjectionError",
     "PositionalOnlyInjectionError",
+    "AsyncDependencyError",
     "StoreOperationError",
     "InvalidStoreOperationError",
 ]

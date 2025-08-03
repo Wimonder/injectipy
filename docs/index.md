@@ -10,9 +10,11 @@ A Python dependency injection library using explicit scopes instead of global st
 ## Features
 
 - **Explicit scopes**: Dependencies managed within context managers, no global state
+- **Async/await support**: Full support for async/await with proper context isolation
 - **Type safety**: Works with mypy for static type checking
 - **Circular dependency detection**: Detects dependency cycles at registration time
 - **Thread safety**: Each scope is isolated, safe for concurrent use
+- **Context isolation**: Thread and async task isolation using contextvars
 - **Lazy evaluation**: Dependencies resolved only when accessed
 - **Test isolation**: Each test can use its own scope
 
@@ -94,6 +96,29 @@ scope.register_resolver("database", create_database)
 
 with scope:
     db = scope["database"]  # Factory called with injected dependencies
+```
+
+### Async/Await Support
+
+```python
+import asyncio
+from injectipy import inject, Inject, DependencyScope
+
+scope = DependencyScope()
+scope.register_value("api_key", "secret-key")
+
+@inject
+async def fetch_data(endpoint: str, api_key: str = Inject["api_key"]) -> dict:
+    # Simulate async API call
+    await asyncio.sleep(0.1)
+    return {"endpoint": endpoint, "authenticated": bool(api_key)}
+
+async def main():
+    async with scope:  # Use async context manager
+        data = await fetch_data("/users")
+        print(data)
+
+asyncio.run(main())
 ```
 
 ## Use Cases

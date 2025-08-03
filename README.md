@@ -10,6 +10,7 @@ A dependency injection library for Python that uses explicit scopes instead of g
 ## Key Features
 
 - **Explicit scopes**: Dependencies managed within context managers, no global state
+- **Async/await support**: Clean async dependency injection with `@ainject` decorator
 - **Type safety**: Works with mypy and provides runtime type checking
 - **Circular dependency detection**: Detects dependency cycles at registration time
 - **Thread safety**: Each scope is isolated, safe for concurrent use
@@ -51,6 +52,64 @@ with scope:
     user = get_user(123)
     print(user)  # "User 123 from Connected to postgresql://localhost/mydb"
 ```
+
+### Async/Await Support with `@ainject`
+
+Injectipy provides strict separation between sync and async dependency injection:
+
+- **`@inject`**: Only works with sync dependencies. **Rejects async dependencies with clear error messages.**
+- **`@ainject`**: Designed for async functions, automatically awaits async dependencies before function execution.
+
+The `@ainject` decorator provides clean async dependency injection by automatically awaiting async dependencies:
+
+```python
+import asyncio
+from injectipy import ainject, Inject, DependencyScope
+
+# Create a scope with async dependencies
+scope = DependencyScope()
+scope.register_value("base_url", "https://api.example.com")
+scope.register_value("api_key", "secret-key")
+
+# Register an async factory
+async def create_api_client(base_url: str = Inject["base_url"], api_key: str = Inject["api_key"]):
+    await asyncio.sleep(0.1)  # Simulate async initialization
+    return {"url": base_url, "key": api_key}
+
+scope.register_async_resolver("api_client", create_api_client)
+
+# ❌ WRONG: @inject rejects async dependencies
+@inject
+async def wrong_way(endpoint: str, client = Inject["api_client"]):
+    # This will raise AsyncDependencyError!
+    return await client.fetch(endpoint)
+
+# ✅ CORRECT: Use @ainject for async dependencies
+@ainject
+async def correct_way(endpoint: str, client = Inject["api_client"]):
+    # @ainject pre-awaits async dependencies - client is ready to use!
+    return await client.fetch(endpoint)
+
+async def main():
+    async with scope:
+        try:
+            await wrong_way("/users")  # Raises AsyncDependencyError
+        except Exception as e:
+            print(f"Error: {e}")
+            print("Use @ainject instead!")
+
+        # This works correctly
+        data = await correct_way("/users")
+        print(data)
+
+asyncio.run(main())
+```
+
+**Key Benefits:**
+- **Clear separation**: No confusion about which decorator to use
+- **Better error messages**: `@inject` guides you to use `@ainject` when needed
+- **Type safety**: Eliminates manual `hasattr(..., '__await__')` checks
+- **Clean code**: `@ainject` pre-resolves all dependencies before function execution
 
 ### Class-based Injection
 
@@ -348,8 +407,13 @@ with production_scope:
 The library raises clear error messages for common issues:
 
 ```python
-from injectipy import inject, Inject, DependencyScope
-from injectipy import DependencyNotFoundError, CircularDependencyError, DuplicateRegistrationError
+from injectipy import inject, ainject, Inject, DependencyScope
+from injectipy import (
+    DependencyNotFoundError,
+    CircularDependencyError,
+    DuplicateRegistrationError,
+    AsyncDependencyError  # New!
+)
 
 # Missing dependency
 @inject
@@ -360,6 +424,23 @@ try:
     missing_dep()
 except DependencyNotFoundError as e:
     print(e)  # "Dependency 'nonexistent' not found"
+
+# Async dependency with @inject (NEW!)
+async def async_service():
+    return "AsyncService"
+
+scope = DependencyScope()
+scope.register_async_resolver("async_service", async_service)
+
+@inject
+def wrong_decorator(service = Inject["async_service"]):
+    return service
+
+with scope:
+    try:
+        wrong_decorator()
+    except AsyncDependencyError as e:
+        print(e)  # "Cannot use @inject with async dependency 'async_service'. Use @ainject instead."
 
 # Circular dependency (detected at registration)
 def service_a(b = Inject["service_b"]):
@@ -524,7 +605,10 @@ asyncio.run(concurrent_example())
 ### Core Components
 
 #### `@inject` decorator
-Decorates functions/methods to enable automatic dependency injection within active scopes.
+Decorates functions/methods to enable automatic dependency injection within active scopes. **Only works with sync dependencies** - rejects async dependencies with `AsyncDependencyError`.
+
+#### `@ainject` decorator
+Decorates async functions to enable automatic dependency injection with proper async/await handling. Automatically awaits async dependencies before function execution.
 
 #### `Inject[key]`
 Type-safe dependency marker for function parameters.
@@ -538,8 +622,13 @@ Context manager for managing dependency lifecycles and isolation.
 Register a static value as a dependency. Returns self for method chaining.
 
 #### `register_resolver(key, resolver, *, evaluate_once=False)`
-Register a factory function as a dependency. Returns self for method chaining.
+Register a sync factory function as a dependency. Returns self for method chaining.
 - `evaluate_once=True`: Cache the result after first evaluation (singleton pattern)
+
+#### `register_async_resolver(key, async_resolver, *, evaluate_once=False)`
+Register an async factory function as a dependency. Returns self for method chaining.
+- `evaluate_once=True`: Cache the result after first evaluation (singleton pattern)
+- Use with `@ainject` decorator for clean async dependency injection
 
 #### `[key]` (getitem)
 Resolve and return a dependency by key. Only works within active scope context.
@@ -601,6 +690,14 @@ poetry run pytest tests/test_scope_functionality.py
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Changelog
+
+### Version 0.3.0 (2025-01-03)
+- **NEW**: `@ainject` decorator for clean async dependency injection
+- **NEW**: `AsyncDependencyError` with helpful error messages guiding users to correct decorator
+- **BREAKING**: `@inject` now strictly rejects async dependencies (use `@ainject` instead)
+- **Enhanced**: Strict separation between sync and async dependency injection
+- **Performance**: Optimized async resolver detection with caching
+- **Documentation**: Updated README with comprehensive async/await examples
 
 ### Version 0.1.0 (2024-01-20)
 - **Initial release** of Injectipy dependency injection library

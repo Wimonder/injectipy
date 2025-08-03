@@ -1,11 +1,11 @@
 [tool.poetry]
 name = "injectipy"
-version = "0.2.0"
-description = "A dependency injection library for Python that uses explicit scopes instead of global state"
+version = "0.3.0"
+description = "A dependency injection library for Python with async/await support using explicit scopes instead of global state"
 authors = ["Wim Onderbeke <wim.onderbeke@hotmail.com>"]
 readme = "README.md"
 license = "MIT"
-keywords = ["dependency injection"]
+keywords = ["dependency injection", "async", "asyncio", "context manager", "type safety"]
 homepage = "https://github.com/Wimonder/injectipy"
 repository = "https://github.com/Wimonder/injectipy"
 documentation = "https://wimonder.github.io/injectipy/"

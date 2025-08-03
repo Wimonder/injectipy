@@ -34,7 +34,14 @@ class _StoreResolverWithArgs:
     evaluate_once: bool
 
 
-_StoreValueType = _StoreResolverWithArgs | Any
+@dataclass(frozen=True)
+class _AsyncStoreResolverWithArgs:
+    async_resolver: Callable[..., Coroutine[Any, Any, Any]]
+    evaluate_once: bool
+    sync_wrapper: StoreResolverType  # The sync wrapper function
+
+
+_StoreValueType = _StoreResolverWithArgs | _AsyncStoreResolverWithArgs | Any
 
 
 def _get_scope_stack() -> list["DependencyScope"]:
@@ -80,6 +87,7 @@ class DependencyScope:
         """Initialize a new dependency scope."""
         self._registry: dict[StoreKeyType, _StoreValueType] = {}
         self._cache: dict[StoreKeyType, Any] = {}
+        self._async_resolver_cache: dict[StoreKeyType, bool] = {}  # Cache for async resolver lookups
         self._registry_lock = threading.RLock()
         self._active = False
 
@@ -100,6 +108,7 @@ class DependencyScope:
             self._raise_if_key_already_registered(key)
             self._registry[key] = value
             self._cache[key] = value
+            self._async_resolver_cache[key] = False  # Values are not async resolvers
         return self
 
     def register_resolver(
@@ -123,6 +132,7 @@ class DependencyScope:
             self._raise_if_key_already_registered(key)
             self._check_circular_dependencies(key, resolver)
             self._registry[key] = _StoreResolverWithArgs(resolver, evaluate_once)
+            self._async_resolver_cache[key] = False  # Sync resolvers are not async
         return self
 
     def register_async_resolver(
@@ -157,16 +167,29 @@ class DependencyScope:
                 # If not in async context, run it synchronously
                 return asyncio.run(async_resolver(*args, **kwargs))
 
-        return self.register_resolver(key, sync_wrapper, evaluate_once=evaluate_once)
+        with self._registry_lock:
+            self._raise_if_key_already_registered(key)
+            self._check_circular_dependencies(key, async_resolver)
+            # Store as an async resolver with a special marker
+            self._registry[key] = _AsyncStoreResolverWithArgs(async_resolver, evaluate_once, sync_wrapper)
+            self._async_resolver_cache[key] = True  # Cache that this is an async resolver
+        return self
 
     def _raise_if_key_already_registered(self, key: StoreKeyType) -> None:
         if key in self._registry:
             # Determine the type of existing registration
             existing_entry = self._registry[key]
-            existing_type = "resolver" if isinstance(existing_entry, _StoreResolverWithArgs) else "value"
+            if isinstance(existing_entry, _StoreResolverWithArgs):
+                existing_type = "resolver"
+            elif isinstance(existing_entry, _AsyncStoreResolverWithArgs):
+                existing_type = "async_resolver"
+            else:
+                existing_type = "value"
             raise DuplicateRegistrationError(key, existing_type=existing_type)
 
-    def _check_circular_dependencies(self, new_key: StoreKeyType, new_resolver: StoreResolverType) -> None:
+    def _check_circular_dependencies(
+        self, new_key: StoreKeyType, new_resolver: StoreResolverType | Callable[..., Coroutine[Any, Any, Any]]
+    ) -> None:
         new_dependencies = self._get_resolver_dependencies(new_resolver)
 
         for dep_key in new_dependencies:
@@ -176,7 +199,9 @@ class DependencyScope:
                     dependency_chain=dependency_chain, new_key=new_key, conflicting_key=dep_key
                 )
 
-    def _get_resolver_dependencies(self, resolver: StoreResolverType) -> set[StoreKeyType]:
+    def _get_resolver_dependencies(
+        self, resolver: StoreResolverType | Callable[..., Coroutine[Any, Any, Any]]
+    ) -> set[StoreKeyType]:
         dependencies = set()
         resolver_signature = inspect.signature(resolver)
 
@@ -203,6 +228,11 @@ class DependencyScope:
             for dep_key in dependencies:
                 if self._has_dependency_path(dep_key, to_key, visited.copy()):
                     return True
+        elif isinstance(registry_entry, _AsyncStoreResolverWithArgs):
+            dependencies = self._get_resolver_dependencies(registry_entry.async_resolver)
+            for dep_key in dependencies:
+                if self._has_dependency_path(dep_key, to_key, visited.copy()):
+                    return True
 
         return False
 
@@ -218,6 +248,13 @@ class DependencyScope:
         registry_entry = self._registry[from_key]
         if isinstance(registry_entry, _StoreResolverWithArgs):
             dependencies = self._get_resolver_dependencies(registry_entry.resolver)
+            for dep_key in dependencies:
+                if dep_key not in current_chain:
+                    chain = self._build_dependency_chain(dep_key, to_key, current_chain + [from_key])
+                    if chain and chain[-1] == to_key:
+                        return chain
+        elif isinstance(registry_entry, _AsyncStoreResolverWithArgs):
+            dependencies = self._get_resolver_dependencies(registry_entry.async_resolver)
             for dep_key in dependencies:
                 if dep_key not in current_chain:
                     chain = self._build_dependency_chain(dep_key, to_key, current_chain + [from_key])
@@ -258,6 +295,11 @@ class DependencyScope:
                     result = self._resolve(resolver_with_args.resolver)
                     if resolver_with_args.evaluate_once:
                         self._cache[key] = result
+                elif isinstance(value_or_resolver_with_args, _AsyncStoreResolverWithArgs):
+                    async_resolver_with_args = value_or_resolver_with_args
+                    result = self._resolve(async_resolver_with_args.sync_wrapper)
+                    if async_resolver_with_args.evaluate_once:
+                        self._cache[key] = result
                 else:
                     result = value_or_resolver_with_args
 
@@ -292,6 +334,20 @@ class DependencyScope:
         """Check if this scope contains a dependency key."""
         return key in self._registry
 
+    def _is_async_resolver(self, key: StoreKeyType) -> bool:
+        """Check if a key corresponds to an async resolver."""
+        with self._registry_lock:
+            # Use cache first for performance
+            if key in self._async_resolver_cache:
+                return self._async_resolver_cache[key]
+
+            # Fallback to registry check (shouldn't happen in normal cases)
+            if key in self._registry:
+                is_async = isinstance(self._registry[key], _AsyncStoreResolverWithArgs)
+                self._async_resolver_cache[key] = is_async  # Cache the result
+                return is_async
+            return False
+
     def __enter__(self) -> "DependencyScope":
         """Sync context manager entry - works for both sync and async contexts."""
         stack = _get_scope_stack()
@@ -310,6 +366,7 @@ class DependencyScope:
         with self._registry_lock:
             self._registry.clear()
             self._cache.clear()
+            self._async_resolver_cache.clear()
 
     async def __aenter__(self) -> "DependencyScope":
         """Async context manager entry."""
@@ -330,6 +387,7 @@ class DependencyScope:
         with self._registry_lock:
             self._registry.clear()
             self._cache.clear()
+            self._async_resolver_cache.clear()
 
     def is_active(self) -> bool:
         """Check if this scope is currently active."""
@@ -340,6 +398,7 @@ class DependencyScope:
         with self._registry_lock:
             self._registry.clear()
             self._cache.clear()
+            self._async_resolver_cache.clear()
 
 
 def resolve_dependency(key: StoreKeyType, additional_scopes: list[DependencyScope] | None = None) -> Any:
