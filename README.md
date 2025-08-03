@@ -230,9 +230,9 @@ def create_service(cls, dep=Inject["service"]): ...
 def cached_func(dep=Inject["service"]): ...
 ```
 
-### Type Safety
+### Type-Based Registration and Injection
 
-Works with mypy for static type checking:
+Use types directly as keys for enhanced type safety:
 
 ```python
 from typing import Protocol
@@ -245,12 +245,63 @@ class PostgreSQLDatabase:
     def query(self, sql: str) -> list:
         return ["result1", "result2"]
 
-# Create scope and register with type hints
+class CacheService:
+    def get(self, key: str) -> str | None:
+        return f"cached_{key}"
+
+class ConfigService:
+    def __init__(self, env: str):
+        self.env = env
+
+    def get_database_url(self) -> str:
+        return f"postgresql://localhost/{self.env}"
+
+# Register dependencies using types as keys
 scope = DependencyScope()
-scope.register_value("database", PostgreSQLDatabase())
+scope.register_value(DatabaseProtocol, PostgreSQLDatabase())
+scope.register_value(CacheService, CacheService())
+scope.register_value(ConfigService, ConfigService("production"))
 
 @inject
-def get_users(db: DatabaseProtocol = Inject["database"]) -> list:
+def process_user(
+    user_id: int,
+    db: DatabaseProtocol = Inject[DatabaseProtocol],
+    cache: CacheService = Inject[CacheService],
+    config: ConfigService = Inject[ConfigService]
+) -> str:
+    users = db.query("SELECT * FROM users WHERE id = ?")
+    cached_data = cache.get(f"user_{user_id}")
+    db_url = config.get_database_url()
+    return f"User data: {users}, cached: {cached_data}, db: {db_url}"
+
+with scope:
+    # Full type safety - mypy knows exact types
+    result = process_user(123)
+```
+
+### String-Based Registration
+
+You can also use string keys for more flexible scenarios:
+
+```python
+from typing import Protocol
+from injectipy import inject, Inject, DependencyScope
+
+class DatabaseProtocol(Protocol):
+    def query(self, sql: str) -> list: ...
+
+class PostgreSQLDatabase:
+    def query(self, sql: str) -> list:
+        return ["result1", "result2"]
+
+# Create scope and register with string keys
+scope = DependencyScope()
+scope.register_value("database", PostgreSQLDatabase())
+scope.register_value("app_name", "MyApp")
+
+@inject
+def get_users(db: DatabaseProtocol = Inject["database"], app: str = Inject["app_name"]) -> list:
+    print(f"Querying from {app}")
     return db.query("SELECT * FROM users")
 
 with scope:
