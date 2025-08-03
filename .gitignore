@@ -32,7 +32,7 @@ coverage.*
 /setup.cfg
 MANIFEST.in
 /setup.py
-/docs/site/*
+site/
 .mypy_cache
 
 .venv

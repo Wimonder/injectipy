@@ -1,5 +1,5 @@
 site_name: Injectipy Documentation
-site_description: A lightweight, thread-safe dependency injection library for Python
+site_description: A dependency injection library for Python that uses explicit scopes instead of global state
 site_author: Wim Onderbeke
 site_url: https://wimonder.github.io/injectipy/
 
@@ -54,12 +54,6 @@ markdown_extensions:
 
 plugins:
   - search
-  - gen-files:
-      scripts:
-        - scripts/generate_api_docs.py
-  - literate-nav:
-      nav_file: SUMMARY.md
-  - section-index
   - mkdocstrings:
       handlers:
         python:
@@ -71,26 +65,11 @@ plugins:
             signature_crossrefs: true
             merge_init_into_class: true
             show_source: false
-  - git-revision-date-localized:
-      type: date
 
 nav:
   - Home: index.md
   - Getting Started:
     - Installation: installation.md
-    - Quick Start: quickstart.md
-    - Basic Usage: basic-usage.md
-  - User Guide:
-    - Core Concepts: concepts.md
-    - Advanced Patterns: advanced-patterns.md
-    - Testing: testing.md
-    - Thread Safety: thread-safety.md
-    - Performance: performance.md
-  - Examples:
-    - Basic Examples: examples/basic.md
-    - Advanced Examples: examples/advanced.md
-    - Testing Examples: examples/testing.md
-  - API Reference: reference/
   - Development:
     - Contributing: contributing.md
     - Changelog: changelog.md

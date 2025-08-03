@@ -23,6 +23,9 @@ ruff = "^0.1.8"
 pre-commit = "^3.6.0"
 pytest-xdist = "^3.8.0"
 pytest-benchmark = "<5.0"
+mkdocs = "^1.6.1"
+mkdocs-material = "^9.6.16"
+mkdocstrings = {extras = ["python"], version = "^0.30.0"}
 
 [tool.mypy]
 python_version = "3.11"

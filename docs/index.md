@@ -61,7 +61,7 @@ poetry add injectipy
 
 - [Installation](installation.md) - Install and verify setup
 - Basic usage examples in this document
-- [Examples](examples/) - Practical code examples
+- [GitHub Examples](https://github.com/Wimonder/injectipy/tree/main/examples) - Practical code examples
 
 ## Basic Usage
 
