@@ -2,7 +2,7 @@ import concurrent.futures
 import threading
 import time
 
-from injectipy import DependencyScope
+from injectipy import DependencyNotFoundError, DependencyScope
 
 
 def test_scope_thread_safety():
@@ -203,7 +203,7 @@ def test_concurrent_mixed_operations():
                     try:
                         value = store[key]
                         results.append((key, value))
-                    except KeyError:
+                    except DependencyNotFoundError:
                         # Key might not exist yet, that's ok
                         pass
         except Exception as e:
