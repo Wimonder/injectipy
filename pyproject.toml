@@ -9,23 +9,29 @@ keywords = ["dependency injection", "async", "asyncio", "context manager", "type
 homepage = "https://github.com/Wimonder/injectipy"
 repository = "https://github.com/Wimonder/injectipy"
 documentation = "https://wimonder.github.io/injectipy/"
+classifiers = [
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = ">=3.11,<4.0"
 
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^7.4.3"
-pytest-cov = "^4.1.0"
-black = "^23.12.1"
-mypy = "^1.8.0"
-ruff = "^0.1.8"
-pre-commit = "^3.6.0"
+pytest = "^9.1.1"
+pytest-cov = "^7.1.0"
+black = "^26.5.1"
+mypy = "^2.3.1"
+ruff = "^0.16.3"
+pre-commit = "^4.6.2"
 pytest-xdist = "^3.8.0"
-pytest-benchmark = "<5.0"
+pytest-benchmark = "^5.2.3"
 mkdocs = "^1.6.1"
-mkdocs-material = "^9.6.16"
-mkdocstrings = {extras = ["python"], version = "^0.30.0"}
+mkdocs-material = "^9.7.7"
+mkdocstrings = {extras = ["python"], version = "^1.0.6"}
 
 [tool.mypy]
 python_version = "3.11"
@@ -76,6 +82,8 @@ filterwarnings = [
 [tool.ruff]
 line-length = 120
 target-version = "py311"
+
+[tool.ruff.lint]
 select = [
     "E",
     "W",
@@ -90,7 +98,7 @@ ignore = [
     "E501",
 ]
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
 "tests/*" = ["B018"]
 
 [tool.coverage.run]

@@ -14,8 +14,7 @@ from injectipy import DependencyScope, Inject, inject
 class EmailServiceProtocol(Protocol):
     """Protocol for email services."""
 
-    def send_email(self, to: str, subject: str, body: str) -> bool:
-        ...
+    def send_email(self, to: str, subject: str, body: str) -> bool: ...
 
 
 class SMTPEmailService:
@@ -118,11 +117,9 @@ class UserRepository:
 class CacheServiceProtocol(Protocol):
     """Protocol for cache services."""
 
-    def get(self, key: str) -> Any:
-        ...
+    def get(self, key: str) -> Any: ...
 
-    def set(self, key: str, value: Any, ttl: int = 3600) -> bool:
-        ...
+    def set(self, key: str, value: Any, ttl: int = 3600) -> bool: ...
 
 
 class RedisCache:

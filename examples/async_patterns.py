@@ -21,8 +21,7 @@ from injectipy import DependencyScope, Inject, ainject, inject
 
 
 class AsyncApiClient(Protocol):
-    async def fetch(self, endpoint: str) -> dict:
-        ...
+    async def fetch(self, endpoint: str) -> dict: ...
 
 
 class HttpApiClient:

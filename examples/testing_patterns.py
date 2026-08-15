@@ -16,15 +16,13 @@ from injectipy import DependencyScope, Inject, inject
 class EmailServiceProtocol(Protocol):
     """Protocol for email services."""
 
-    def send_email(self, to: str, subject: str, body: str) -> bool:
-        ...
+    def send_email(self, to: str, subject: str, body: str) -> bool: ...
 
 
 class DatabaseProtocol(Protocol):
     """Protocol for database access."""
 
-    def query(self, sql: str) -> list[dict]:
-        ...
+    def query(self, sql: str) -> list[dict]: ...
 
 
 class ProductionEmailService:

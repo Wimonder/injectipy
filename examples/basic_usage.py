@@ -136,8 +136,7 @@ def example_5_type_based_keys():
     class DatabaseProtocol(Protocol):
         """Protocol defining database interface."""
 
-        def query(self, sql: str) -> list:
-            ...
+        def query(self, sql: str) -> list: ...
 
     class PostgreSQLDatabase:
         """Concrete PostgreSQL implementation."""

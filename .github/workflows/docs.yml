@@ -33,9 +33,7 @@ jobs:
         virtualenvs-in-project: true
 
     - name: Install dependencies
-      run: |
-        poetry install
-        poetry add mkdocs mkdocs-material mkdocstrings[python]
+      run: poetry install --no-interaction
 
     - name: Build documentation
       run: poetry run mkdocs build

@@ -23,8 +23,8 @@ StoreKeyType: TypeAlias = str | type
 StoreResolverType: TypeAlias = Callable[..., Any]
 
 # Context variable for scope stack - works for both threads and async tasks
-_scope_stack: contextvars.ContextVar[list["DependencyScope"]] = contextvars.ContextVar(
-    "injectipy_scope_stack", default=[]
+_scope_stack: contextvars.ContextVar[tuple["DependencyScope", ...]] = contextvars.ContextVar(
+    "injectipy_scope_stack", default=()
 )
 
 
@@ -49,12 +49,12 @@ def _get_scope_stack() -> list["DependencyScope"]:
 
     This works correctly for both threading and asyncio contexts.
     """
-    return _scope_stack.get().copy()
+    return list(_scope_stack.get())
 
 
 def _set_scope_stack(stack: list["DependencyScope"]) -> None:
     """Set the scope stack in the current context."""
-    _scope_stack.set(stack)
+    _scope_stack.set(tuple(stack))
 
 
 class DependencyScope:
@@ -264,12 +264,10 @@ class DependencyScope:
         return current_chain + [from_key]
 
     @overload
-    def __getitem__(self, key: str) -> Any:
-        ...
+    def __getitem__(self, key: str) -> Any: ...
 
     @overload
-    def __getitem__(self, key: type[T]) -> T:
-        ...
+    def __getitem__(self, key: type[T]) -> T: ...
 
     def __getitem__(self, key: Any) -> Any:
         """Get a dependency from this scope only.

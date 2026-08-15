@@ -9,8 +9,7 @@ from injectipy import AsyncDependencyError, DependencyScope, Inject, ainject, in
 
 
 class AsyncApiClient(Protocol):
-    async def fetch(self, endpoint: str) -> dict:
-        ...
+    async def fetch(self, endpoint: str) -> dict: ...
 
 
 class MockAsyncApiClient:

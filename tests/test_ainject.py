@@ -10,8 +10,7 @@ from injectipy.exceptions import DependencyNotFoundError, PositionalOnlyInjectio
 
 
 class AsyncApiClient(Protocol):
-    async def fetch(self, endpoint: str) -> dict:
-        ...
+    async def fetch(self, endpoint: str) -> dict: ...
 
 
 class MockAsyncApiClient:
