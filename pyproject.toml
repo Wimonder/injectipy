@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "injectipy"
-version = "0.3.0"
+version = "0.4.0"
 description = "A dependency injection library for Python with async/await support using explicit scopes instead of global state"
 authors = ["Wim Onderbeke <wim.onderbeke@hotmail.com>"]
 readme = "README.md"
