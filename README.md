@@ -9,10 +9,10 @@ A dependency injection library for Python that uses explicit scopes instead of g
 
 ## Key Features
 
-- **Explicit scopes**: Dependencies managed within context managers, no global state
-- **Type safety**: Works with mypy and provides runtime type checking
+- **Explicit scopes**: Dependency lifetimes managed within context managers, no global container
+- **Type safety**: `Inject[SomeType]` is checked against the parameter annotation by mypy
 - **Lazy evaluation**: Dependencies resolved only when accessed
-- **Thread safety**: Each scope is isolated, safe for concurrent use
+- **Thread safety**: Scopes are safe to register and resolve from multiple threads
 - **Test isolation**: Each test can use its own scope with different dependencies
 - **Circular dependency detection**: Detects dependency cycles at registration time
 - **Async/await support**: Async dependency injection with `@ainject` decorator
@@ -441,6 +441,34 @@ for thread in threads:
     thread.join()
 ```
 
+The active scope is stored in a context variable, and threads do not inherit the
+context of the thread that started them. A thread therefore has to enter the scope
+itself, as above, or the function has to name its scopes explicitly:
+
+```python
+@inject(scopes=[shared_scope])
+def worker_function(resource: str = Inject["shared_resource"]):
+    # Resolves in any thread, no active scope needed
+    return f"Worker using {resource}"
+```
+
+## Overriding Dependencies
+
+Registrations stay on a scope until you remove them, so a scope can be entered
+again. Use `replace=True` to swap a dependency, and `unregister` or `clear` to
+remove them:
+
+```python
+scope = DependencyScope()
+scope.register_value("database", "PostgreSQL")
+
+# Swap a dependency, for example in a test
+scope.register_value("database", "MockDatabase", replace=True)
+
+scope.unregister("database")
+scope.clear()
+```
+
 ## API Reference
 
 ### Core Components
@@ -452,24 +480,31 @@ Decorates functions/methods to enable automatic dependency injection within acti
 Decorates async functions to enable automatic dependency injection with proper async/await handling. Automatically awaits async dependencies before function execution.
 
 #### `Inject[key]`
-Type-safe dependency marker for function parameters.
+Dependency marker for function parameters. `Inject[SomeType]` is typed as `SomeType`, so type checkers verify it against the parameter annotation. String keys are typed as `Any`.
 
 #### `DependencyScope`
 Context manager for managing dependency lifecycles and isolation.
 
 ### DependencyScope Methods
 
-#### `register_value(key, value)`
+#### `register_value(key, value, *, replace=False)`
 Register a static value as a dependency. Returns self for method chaining.
+- `replace=True`: Replace an existing registration instead of raising `DuplicateRegistrationError`
 
-#### `register_resolver(key, resolver, *, evaluate_once=False)`
+#### `register_resolver(key, resolver, *, evaluate_once=False, replace=False)`
 Register a sync factory function as a dependency. Returns self for method chaining.
 - `evaluate_once=True`: Cache the result after first evaluation (singleton pattern)
 
-#### `register_async_resolver(key, async_resolver, *, evaluate_once=False)`
+#### `register_async_resolver(key, async_resolver, *, evaluate_once=False, replace=False)`
 Register an async factory function as a dependency. Returns self for method chaining.
 - `evaluate_once=True`: Cache the result after first evaluation (singleton pattern)
 - Use with `@ainject` decorator for clean async dependency injection
+
+#### `unregister(key)`
+Remove a dependency and anything cached for it. Returns self for method chaining.
+
+#### `clear()`
+Remove all dependencies registered in this scope. Returns self for method chaining.
 
 #### `[key]` (getitem)
 Resolve and return a dependency by key from this scope.
@@ -478,7 +513,7 @@ Resolve and return a dependency by key from this scope.
 Check if a dependency key is registered in this scope.
 
 #### `is_active()`
-Check if this scope is currently active (within a `with` block).
+Check if this scope is on the scope stack of the current thread or task.
 
 #### Context Manager Protocol
 - `__enter__()`: Activate the scope

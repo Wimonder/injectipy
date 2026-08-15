@@ -9,11 +9,11 @@ A Python dependency injection library using explicit scopes instead of global st
 
 ## Features
 
-- **Explicit scopes**: Dependencies managed within context managers, no global state
+- **Explicit scopes**: Dependency lifetimes managed within context managers, no global container
 - **Async/await support**: Full support for async/await with proper context isolation
-- **Type safety**: Works with mypy for static type checking
+- **Type safety**: `Inject[SomeType]` is checked against the parameter annotation by mypy
 - **Circular dependency detection**: Detects dependency cycles at registration time
-- **Thread safety**: Each scope is isolated, safe for concurrent use
+- **Thread safety**: Scopes are safe to register and resolve from multiple threads
 - **Context isolation**: Thread and async task isolation using contextvars
 - **Lazy evaluation**: Dependencies resolved only when accessed
 - **Test isolation**: Each test can use its own scope

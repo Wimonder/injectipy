@@ -28,9 +28,11 @@ async def run_with_scope_context(coro: Coroutine[Any, Any, T], scope: Dependency
 
 
 async def gather_with_scope_isolation(*coros: Coroutine[Any, Any, Any]) -> list[Any]:
-    """Run multiple coroutines with proper scope isolation.
+    """Run multiple coroutines, each in its own context.
 
-    Each coroutine gets its own scope context to prevent interference.
+    Scopes entered by a coroutine stay inside it. Tasks already copy the current
+    context, so this matches asyncio.gather and only differs from awaiting the
+    coroutines directly.
 
     Args:
         *coros: The coroutines to run with isolation
