@@ -472,7 +472,7 @@ Register an async factory function as a dependency. Returns self for method chai
 - Use with `@ainject` decorator for clean async dependency injection
 
 #### `[key]` (getitem)
-Resolve and return a dependency by key. Only works within active scope context.
+Resolve and return a dependency by key from this scope.
 
 #### `contains(key)`
 Check if a dependency key is registered in this scope.
@@ -482,7 +482,7 @@ Check if this scope is currently active (within a `with` block).
 
 #### Context Manager Protocol
 - `__enter__()`: Activate the scope
-- `__exit__()`: Deactivate the scope and clean up
+- `__exit__()`: Deactivate the scope, keeping its registrations so it can be reused
 
 ## Documentation
 

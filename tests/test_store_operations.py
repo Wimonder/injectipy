@@ -119,8 +119,8 @@ def test_evaluate_once_caching(scope: DependencyScope):
     assert call_count == 1  # Not called again
 
 
-def test_context_manager_cleanup():
-    """Test context manager cleanup."""
+def test_context_manager_keeps_registrations():
+    """Test context manager exit keeps registrations."""
     scope = DependencyScope()
     scope.register_value("key", "value")
 
@@ -129,9 +129,8 @@ def test_context_manager_cleanup():
         assert scope["key"] == "value"
 
     assert not scope.is_active()
-    # After exit, the scope should be cleaned up
-    with pytest.raises(DependencyNotFoundError):
-        _ = scope["key"]
+    # After exit, the scope is inactive but keeps its registrations
+    assert scope["key"] == "value"
 
 
 def test_nested_scopes():

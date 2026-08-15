@@ -82,17 +82,32 @@ class TestContextManager:
 
         assert not scope.is_active()
 
-    def test_context_manager_cleanup(self):
-        """Test that context manager cleans up on exit."""
+    def test_context_manager_keeps_registrations(self):
+        """Test that context manager exit keeps registrations."""
         scope = DependencyScope()
         scope.register_value("key", "value")
 
         with scope:
             assert scope["key"] == "value"
 
-        # After exit, the scope should be cleaned up
-        with pytest.raises(DependencyNotFoundError):
-            _ = scope["key"]
+        # After exit, the scope is inactive but keeps its registrations
+        assert not scope.is_active()
+        assert scope["key"] == "value"
+
+    def test_scope_can_be_reused(self):
+        """Test that a scope can be entered more than once."""
+        scope = DependencyScope()
+        scope.register_value("config", {"env": "production"})
+
+        @inject
+        def get_environment(config: dict = Inject["config"]):
+            return config["env"]
+
+        with scope:
+            assert get_environment() == "production"
+
+        with scope:
+            assert get_environment() == "production"
 
     def test_nested_scopes(self):
         """Test nested scope contexts."""
@@ -398,10 +413,9 @@ class TestScopeCleanup:
         except ValueError:
             pass
 
-        # Scope should be deactivated and cleaned up
+        # Scope should be deactivated but keep its registrations
         assert not scope.is_active()
-        with pytest.raises(DependencyNotFoundError):
-            _ = scope["key"]
+        assert scope["key"] == "value"
 
     def test_clear_scope_stack(self):
         """Test clearing the scope stack."""

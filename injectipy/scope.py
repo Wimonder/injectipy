@@ -355,16 +355,11 @@ class DependencyScope:
         return self
 
     def __exit__(self, _exc_type: Any, _exc_val: Any, _exc_tb: Any) -> None:
-        """Sync context manager exit - works for both sync and async contexts."""
-        stack = _get_scope_stack()
-        if stack and stack[-1] is self:
-            new_stack = stack[:-1]
-            _set_scope_stack(new_stack)
-        self._active = False
-        with self._registry_lock:
-            self._registry.clear()
-            self._cache.clear()
-            self._async_resolver_cache.clear()
+        """Sync context manager exit - works for both sync and async contexts.
+
+        Registrations are kept, so the scope can be entered again.
+        """
+        self._deactivate()
 
     async def __aenter__(self) -> "DependencyScope":
         """Async context manager entry."""
@@ -375,17 +370,18 @@ class DependencyScope:
         return self
 
     async def __aexit__(self, _exc_type: Any, _exc_val: Any, _exc_tb: Any) -> None:
-        """Async context manager exit with cleanup."""
+        """Async context manager exit.
+
+        Registrations are kept, so the scope can be entered again.
+        """
+        self._deactivate()
+
+    def _deactivate(self) -> None:
+        """Remove this scope from the scope stack and mark it inactive."""
         stack = _get_scope_stack()
         if stack and stack[-1] is self:
-            new_stack = stack[:-1]
-            _set_scope_stack(new_stack)
+            _set_scope_stack(stack[:-1])
         self._active = False
-        # Use regular synchronous cleanup - registry operations are already thread-safe
-        with self._registry_lock:
-            self._registry.clear()
-            self._cache.clear()
-            self._async_resolver_cache.clear()
 
     def is_active(self) -> bool:
         """Check if this scope is currently active."""
