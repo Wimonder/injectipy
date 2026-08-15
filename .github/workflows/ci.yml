@@ -36,7 +36,7 @@ jobs:
       run: poetry run ruff check .
 
     - name: Run type checking
-      run: poetry run mypy injectipy/
+      run: poetry run mypy injectipy/ tests/test_typing.py
 
     - name: Run tests
       run: poetry run pytest --cov=injectipy

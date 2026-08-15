@@ -1,11 +1,19 @@
-from typing import Any, Generic, TypeAlias, TypeVar
+from typing import Any, Generic, TypeAlias, TypeVar, overload
 
 T = TypeVar("T")
 InjectKeyType: TypeAlias = str | type
 
 
 class _TypingMeta(type):
+    @overload
+    def __getitem__(cls, item: type[T]) -> T: ...
+
+    @overload
+    def __getitem__(cls, item: str) -> Any: ...
+
     def __getitem__(cls, item: Any) -> Any:
+        # Inject[SomeType] is typed as SomeType so type checkers verify the annotation.
+        # String keys carry no static type, so they stay Any.
         return cls(item)
 
 
@@ -63,9 +71,9 @@ class Inject(_Inject, metaclass=_TypingMeta):
         ...     result = my_function("test")
 
     Type Safety:
-        The Inject class maintains type information so that mypy and other
-        type checkers can verify that the injected dependency matches the
-        parameter type annotation.
+        Inject[SomeType] is typed as SomeType, so type checkers verify it against
+        the parameter annotation. String keys have no static type and are typed as
+        Any, so their annotation is not checked.
     """
 
     ...

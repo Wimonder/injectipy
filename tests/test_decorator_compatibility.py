@@ -40,7 +40,7 @@ def test_contextmanager_then_inject(test_scope):
 
 
 def test_inject_then_contextmanager(test_scope):
-    """Test @inject then @contextmanager (incorrect order - should fail)."""
+    """Test @inject then @contextmanager (both orders work)."""
     with test_scope:
 
         @inject
@@ -52,8 +52,7 @@ def test_inject_then_contextmanager(test_scope):
                 pass
 
         with context_func("test") as resource:
-            # When @inject is applied first, it doesn't work properly
-            assert "Inject object" in str(resource)
+            assert resource == "context: test + injected_service"
 
 
 def test_lru_cache_then_inject(test_scope):
@@ -72,7 +71,7 @@ def test_lru_cache_then_inject(test_scope):
 
 
 def test_inject_then_lru_cache(test_scope):
-    """Test @inject then @lru_cache (incorrect order - should fail)."""
+    """Test @inject then @lru_cache (both orders work)."""
     with test_scope:
 
         @inject
@@ -82,9 +81,8 @@ def test_inject_then_lru_cache(test_scope):
 
         result1 = cached_func("test1")
         result2 = cached_func("test1")  # Should be cached
-        # When @inject is applied first, it doesn't work properly
-        assert "Inject object" in str(result1)
-        assert "Inject object" in str(result2)
+        assert result1 == "cached: test1 + injected_service"
+        assert result2 == result1
 
 
 def custom_decorator(func):
@@ -115,7 +113,7 @@ def test_custom_then_inject(test_scope):
 
 
 def test_inject_then_custom(test_scope):
-    """Test @inject then custom decorator (incorrect order - should fail)."""
+    """Test @inject then custom decorator (both orders work)."""
     with test_scope:
 
         @inject
@@ -125,8 +123,7 @@ def test_inject_then_custom(test_scope):
 
         result = func("test")
         has_meta = hasattr(func, "custom_meta")
-        # When @inject is applied first, it doesn't work properly
-        assert "Inject object" in str(result)
+        assert result == "custom_decorated(data=test, service=injected_service)"
         assert has_meta is True
 
 
@@ -148,7 +145,7 @@ def test_property_then_inject(test_scope):
 
 
 def test_inject_then_property(test_scope):
-    """Test @inject then @property (incorrect order - should fail)."""
+    """Test @inject then @property (incorrect order - property is left untouched)."""
     with test_scope:
 
         class TestClass:
@@ -161,7 +158,7 @@ def test_inject_then_property(test_scope):
                 return f"property: {self._value} + {service}"
 
         obj = TestClass()
-        # When @inject is applied first, it doesn't work properly
+        # A property has no introspectable signature, so nothing is injected
         assert "Inject object" in str(obj.computed_value)
 
 

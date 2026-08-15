@@ -2,7 +2,8 @@ import asyncio
 import functools
 import inspect
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, TypeVar, cast, overload
 
 from injectipy.exceptions import AsyncDependencyError, DependencyNotFoundError, PositionalOnlyInjectionError
 from injectipy.models.inject import Inject
@@ -12,6 +13,54 @@ AsyncF = TypeVar("AsyncF", bound=Callable[..., Awaitable[Any]])
 
 if TYPE_CHECKING:
     from injectipy.scope import DependencyScope
+
+
+@dataclass(frozen=True)
+class _InjectionPoint:
+    """A parameter to inject, resolved once at decoration time."""
+
+    name: str
+    key: Any
+    position: int | None  # Index among positional parameters, None for keyword-only
+    positional_only: bool
+
+
+def _collect_injection_points(func: Callable[..., Any]) -> list[_InjectionPoint]:
+    """Find the parameters marked with Inject[key].
+
+    Objects without an introspectable signature, such as property, get no
+    injection points and are left untouched.
+    """
+    try:
+        parameters = list(inspect.signature(func).parameters.values())
+    except (TypeError, ValueError):
+        return []
+    positional_kinds = (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+    positional_parameters = [param for param in parameters if param.kind in positional_kinds]
+
+    points = [
+        _InjectionPoint(
+            name=param.name,
+            key=param.default.get_inject_key(),
+            position=position,
+            positional_only=param.kind is inspect.Parameter.POSITIONAL_ONLY,
+        )
+        for position, param in enumerate(positional_parameters)
+        if isinstance(param.default, Inject)
+    ]
+    points += [
+        _InjectionPoint(name=param.name, key=param.default.get_inject_key(), position=None, positional_only=False)
+        for param in parameters
+        if param.kind is inspect.Parameter.KEYWORD_ONLY and isinstance(param.default, Inject)
+    ]
+    return points
+
+
+def _is_supplied(point: _InjectionPoint, args: tuple[Any, ...], kwargs: dict[str, Any]) -> bool:
+    """Check if the caller passed this parameter explicitly."""
+    if point.position is not None and point.position < len(args):
+        return True
+    return point.name in kwargs
 
 
 def _check_for_async_dependency(
@@ -71,6 +120,14 @@ def _resolve_with_async_check(
     from injectipy.scope import resolve_dependency
 
     return resolve_dependency(inject_key, explicit_scopes)
+
+
+@overload
+def inject(fn: F) -> F: ...
+
+
+@overload
+def inject(*, scopes: list["DependencyScope"] | None = ...) -> Callable[[F], F]: ...
 
 
 def inject(fn: F | None = None, *, scopes: list["DependencyScope"] | None = None) -> F | Callable[[F], F]:
@@ -144,99 +201,47 @@ def _create_injected_function(fn: F, explicit_scopes: list["DependencyScope"] | 
     """Create the actual injected function implementation."""
     is_classmethod = isinstance(fn, classmethod)
     is_staticmethod = isinstance(fn, staticmethod)
+    original_func = fn.__func__ if (is_classmethod or is_staticmethod) else fn  # type: ignore[attr-defined]
 
-    if is_classmethod or is_staticmethod:
-        original_func = fn.__func__  # type: ignore[attr-defined]
-        original_defaults = original_func.__defaults__
-        original_kwdefaults = original_func.__kwdefaults__
-    else:
-        original_func = fn
-        original_defaults = getattr(fn, "__defaults__", None)
-        original_kwdefaults = getattr(fn, "__kwdefaults__", None)
+    # Signature inspection happens once here, not on every call.
+    points = _collect_injection_points(original_func)
+    module_name = getattr(original_func, "__module__", None)
 
-    has_inject_defaults = False
-
-    if original_defaults:
-        has_inject_defaults = any(isinstance(default, Inject) for default in original_defaults)
-
-    if original_kwdefaults:
-        has_inject_defaults = has_inject_defaults or any(
-            isinstance(default, Inject) for default in original_kwdefaults.values()
-        )
-
-    if not has_inject_defaults:
+    if not points:
         return fn
 
     @functools.wraps(original_func)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
-        resolved_kwargs = kwargs.copy()
-        sig = inspect.signature(original_func)
-        bound_args = sig.bind_partial(*args, **kwargs)
+        for point in points:
+            if _is_supplied(point, args, kwargs):
+                continue
 
-        if original_defaults:
-            param_list = list(sig.parameters.values())
-            regular_params = [
-                p
-                for p in param_list
-                if p.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
-            ]
-            params_with_defaults = regular_params[-len(original_defaults) :]
+            if point.positional_only:
+                raise PositionalOnlyInjectionError(
+                    function_name=original_func.__name__,
+                    parameter_name=point.name,
+                    dependency_key=point.key,
+                    module_name=module_name,
+                )
 
-            for param, default in zip(params_with_defaults, original_defaults, strict=False):
-                if isinstance(default, Inject):
-                    if param.name not in bound_args.arguments:
-                        inject_key = default.get_inject_key()
-                        try:
-                            resolved_value = _resolve_with_async_check(
-                                inject_key=inject_key,
-                                param_name=param.name,
-                                function_name=original_func.__name__,
-                                module_name=getattr(original_func, "__module__", None),
-                                explicit_scopes=explicit_scopes,
-                            )
+            try:
+                kwargs[point.name] = _resolve_with_async_check(
+                    inject_key=point.key,
+                    param_name=point.name,
+                    function_name=original_func.__name__,
+                    module_name=module_name,
+                    explicit_scopes=explicit_scopes,
+                )
+            except DependencyNotFoundError as e:
+                raise DependencyNotFoundError(
+                    key=point.key,
+                    function_name=original_func.__name__,
+                    module_name=module_name,
+                    parameter_name=point.name,
+                    available_keys=e.available_keys,
+                ) from e
 
-                            if param.kind == inspect.Parameter.POSITIONAL_ONLY:
-                                raise PositionalOnlyInjectionError(
-                                    function_name=original_func.__name__,
-                                    parameter_name=param.name,
-                                    dependency_key=inject_key,
-                                    module_name=getattr(original_func, "__module__", None),
-                                )
-                            else:
-                                resolved_kwargs[param.name] = resolved_value
-                        except DependencyNotFoundError as e:
-                            raise DependencyNotFoundError(
-                                key=inject_key,
-                                function_name=original_func.__name__,
-                                module_name=getattr(original_func, "__module__", None),
-                                parameter_name=param.name,
-                                available_keys=e.available_keys,
-                            ) from e
-
-        if original_kwdefaults:
-            for param_name, default in original_kwdefaults.items():
-                if isinstance(default, Inject):
-                    if param_name not in resolved_kwargs:
-                        inject_key = default.get_inject_key()
-                        try:
-                            resolved_value = _resolve_with_async_check(
-                                inject_key=inject_key,
-                                param_name=param_name,
-                                function_name=original_func.__name__,
-                                module_name=getattr(original_func, "__module__", None),
-                                explicit_scopes=explicit_scopes,
-                            )
-                            resolved_kwargs[param_name] = resolved_value
-                        except DependencyNotFoundError as e:
-                            raise DependencyNotFoundError(
-                                key=inject_key,
-                                function_name=original_func.__name__,
-                                module_name=getattr(original_func, "__module__", None),
-                                parameter_name=param_name,
-                                available_keys=e.available_keys,
-                            ) from e
-
-        return original_func(*args, **resolved_kwargs)
+        return original_func(*args, **kwargs)
 
     if is_classmethod:
         return cast(F, classmethod(wrapper))
@@ -244,6 +249,14 @@ def _create_injected_function(fn: F, explicit_scopes: list["DependencyScope"] | 
         return cast(F, staticmethod(wrapper))
     else:
         return cast(F, wrapper)
+
+
+@overload
+def ainject(fn: AsyncF) -> AsyncF: ...
+
+
+@overload
+def ainject(*, scopes: list["DependencyScope"] | None = ...) -> Callable[[AsyncF], AsyncF]: ...
 
 
 def ainject(
@@ -347,96 +360,48 @@ async def resolve_dependency_async(key: Any, additional_scopes: list["Dependency
 
 def _create_async_injected_function(fn: AsyncF, explicit_scopes: list["DependencyScope"] | None = None) -> AsyncF:
     """Create the actual async injected function implementation."""
-
-    # Validate that the function is actually async
-    if not asyncio.iscoroutinefunction(fn):
-        raise TypeError(f"@ainject can only be used with async functions, got {fn.__name__}")
-
     is_classmethod = isinstance(fn, classmethod)
     is_staticmethod = isinstance(fn, staticmethod)
+    original_func = fn.__func__ if (is_classmethod or is_staticmethod) else fn  # type: ignore[attr-defined]
 
-    if is_classmethod or is_staticmethod:
-        original_func = fn.__func__  # type: ignore[attr-defined]
-        original_defaults = original_func.__defaults__
-        original_kwdefaults = original_func.__kwdefaults__
-    else:
-        original_func = fn
-        original_defaults = getattr(fn, "__defaults__", None)
-        original_kwdefaults = getattr(fn, "__kwdefaults__", None)
+    # Validate that the function is actually async
+    if not asyncio.iscoroutinefunction(original_func):
+        raise TypeError(f"@ainject can only be used with async functions, got {original_func.__name__}")
 
-    has_inject_defaults = False
+    # Signature inspection happens once here, not on every call.
+    points = _collect_injection_points(original_func)
+    module_name = getattr(original_func, "__module__", None)
 
-    if original_defaults:
-        has_inject_defaults = any(isinstance(default, Inject) for default in original_defaults)
-
-    if original_kwdefaults:
-        has_inject_defaults = has_inject_defaults or any(
-            isinstance(default, Inject) for default in original_kwdefaults.values()
-        )
-
-    if not has_inject_defaults:
-        return cast(AsyncF, fn)
+    if not points:
+        return fn
 
     @functools.wraps(original_func)
     async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-        resolved_kwargs = kwargs.copy()
-        sig = inspect.signature(original_func)
-        bound_args = sig.bind_partial(*args, **kwargs)
+        for point in points:
+            if _is_supplied(point, args, kwargs):
+                continue
 
-        # Resolve regular parameters with defaults
-        if original_defaults:
-            param_list = list(sig.parameters.values())
-            regular_params = [
-                p
-                for p in param_list
-                if p.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
-            ]
-            params_with_defaults = regular_params[-len(original_defaults) :]
+            if point.positional_only:
+                raise PositionalOnlyInjectionError(
+                    function_name=original_func.__name__,
+                    parameter_name=point.name,
+                    dependency_key=point.key,
+                    module_name=module_name,
+                )
 
-            for param, default in zip(params_with_defaults, original_defaults, strict=False):
-                if isinstance(default, Inject):
-                    if param.name not in bound_args.arguments:
-                        inject_key = default.get_inject_key()
-                        try:
-                            resolved_value = await resolve_dependency_async(inject_key, explicit_scopes)
-
-                            if param.kind == inspect.Parameter.POSITIONAL_ONLY:
-                                raise PositionalOnlyInjectionError(
-                                    function_name=original_func.__name__,
-                                    parameter_name=param.name,
-                                    dependency_key=inject_key,
-                                    module_name=getattr(original_func, "__module__", None),
-                                )
-                            else:
-                                resolved_kwargs[param.name] = resolved_value
-                        except DependencyNotFoundError as e:
-                            raise DependencyNotFoundError(
-                                key=inject_key,
-                                function_name=original_func.__name__,
-                                module_name=getattr(original_func, "__module__", None),
-                                parameter_name=param.name,
-                                available_keys=e.available_keys,
-                            ) from e
-
-        # Resolve keyword-only parameters
-        if original_kwdefaults:
-            for param_name, default in original_kwdefaults.items():
-                if isinstance(default, Inject):
-                    if param_name not in resolved_kwargs:
-                        inject_key = default.get_inject_key()
-                        try:
-                            resolved_kwargs[param_name] = await resolve_dependency_async(inject_key, explicit_scopes)
-                        except DependencyNotFoundError as e:
-                            raise DependencyNotFoundError(
-                                key=inject_key,
-                                function_name=original_func.__name__,
-                                module_name=getattr(original_func, "__module__", None),
-                                parameter_name=param_name,
-                                available_keys=e.available_keys,
-                            ) from e
+            try:
+                kwargs[point.name] = await resolve_dependency_async(point.key, explicit_scopes)
+            except DependencyNotFoundError as e:
+                raise DependencyNotFoundError(
+                    key=point.key,
+                    function_name=original_func.__name__,
+                    module_name=module_name,
+                    parameter_name=point.name,
+                    available_keys=e.available_keys,
+                ) from e
 
         # Call the original async function with resolved dependencies
-        return await original_func(*args, **resolved_kwargs)
+        return await original_func(*args, **kwargs)
 
     if is_classmethod:
         return cast(AsyncF, classmethod(async_wrapper))

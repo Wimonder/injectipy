@@ -246,6 +246,23 @@ def test_ainject_with_classmethod(basic_scope):
     asyncio.run(run_test())
 
 
+def test_ainject_over_classmethod(basic_scope):
+    """Test ainject applied on top of classmethod."""
+
+    class TestClass:
+        @ainject
+        @classmethod
+        async def get_service(cls, service: str = Inject["service"]) -> str:
+            return f"class: {cls.__name__}, service: {service}"
+
+    async def run_test():
+        async with basic_scope:
+            result = await TestClass.get_service()
+            assert result == "class: TestClass, service: injected_service"
+
+    asyncio.run(run_test())
+
+
 def test_ainject_with_staticmethod(basic_scope):
     """Test ainject decorator with staticmethods."""
 
