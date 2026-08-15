@@ -159,9 +159,9 @@ def test_dependency_path_with_nonexistent_keys(test_scope: DependencyScope):
         # Should not raise circular dependency error during registration
         test_scope.register_resolver("service_a", service_a)
 
-        # Should fall back to Inject object when dependency is missing
-        result = test_scope["service_a"]
-        assert "Inject object" in str(result)
+        # Resolution fails once the dependency is still missing
+        with pytest.raises(DependencyNotFoundError, match="does_not_exist"):
+            test_scope["service_a"]
 
 
 # =============================================================================
@@ -196,9 +196,13 @@ def test_resolver_with_missing_inject_dependency(test_scope: DependencyScope):
         # Registration should succeed (forward references allowed)
         test_scope.register_resolver("dependent", dependent_resolver)
 
-        # Resolution should fall back to Inject object when dependency is missing
-        result = test_scope["dependent"]
-        assert "Inject object" in str(result)
+        # Resolution fails when the dependency is still missing
+        with pytest.raises(DependencyNotFoundError, match="nonexistent"):
+            test_scope["dependent"]
+
+        # Registering it later makes the resolver work
+        test_scope.register_value("nonexistent", "now_here")
+        assert test_scope["dependent"] == "depends on now_here"
 
 
 def test_resolver_exception_propagation(test_scope: DependencyScope):

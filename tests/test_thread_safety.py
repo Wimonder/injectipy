@@ -182,6 +182,49 @@ def test_concurrent_evaluate_once_resolver():
     assert all(result == "cached_result_1" for result in results)
 
 
+def test_resolver_can_wait_on_another_thread():
+    """Resolvers run outside the scope lock, so they can use other threads."""
+    store = DependencyScope()
+    store.register_value("other", "other_value")
+
+    def resolver():
+        results = []
+        worker = threading.Thread(target=lambda: results.append(store["other"]), daemon=True)
+        worker.start()
+        worker.join(timeout=5)
+        assert not worker.is_alive(), "resolver deadlocked the scope"
+        return results[0]
+
+    store.register_resolver("main", resolver)
+
+    assert store["main"] == "other_value"
+
+
+def test_cross_scope_resolution_does_not_deadlock():
+    """Two scopes resolving into each other from two threads must not deadlock."""
+    scope_a = DependencyScope()
+    scope_b = DependencyScope()
+    start = threading.Barrier(2, timeout=5)
+
+    scope_a.register_value("a_value", "a")
+    scope_b.register_value("b_value", "b")
+    scope_a.register_resolver("needs_b", lambda: (start.wait(), scope_b["b_value"])[1])
+    scope_b.register_resolver("needs_a", lambda: (start.wait(), scope_a["a_value"])[1])
+
+    results = {}
+    threads = [
+        threading.Thread(target=lambda: results.update(from_a=scope_a["needs_b"]), daemon=True),
+        threading.Thread(target=lambda: results.update(from_b=scope_b["needs_a"]), daemon=True),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=5)
+        assert not thread.is_alive(), "cross-scope resolution deadlocked"
+
+    assert results == {"from_a": "b", "from_b": "a"}
+
+
 def test_concurrent_mixed_operations():
     """Test concurrent registration and access operations."""
     store = DependencyScope()

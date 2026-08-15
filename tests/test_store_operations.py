@@ -161,3 +161,77 @@ def test_method_chaining():
     with scope:
         assert scope["key1"] == "value1"
         assert scope["key2"] == "value2"
+
+
+def test_replace_existing_registration():
+    """Test that replace=True overrides a registration."""
+    scope = DependencyScope()
+    scope.register_value("service", "real")
+
+    with pytest.raises(DuplicateRegistrationError):
+        scope.register_value("service", "fake")
+
+    scope.register_value("service", "fake", replace=True)
+    assert scope["service"] == "fake"
+
+    scope.register_resolver("service", lambda: "from_resolver", replace=True)
+    assert scope["service"] == "from_resolver"
+
+
+def test_replace_drops_cached_value():
+    """Test that replacing an evaluate_once resolver drops its cached result."""
+    scope = DependencyScope()
+    scope.register_resolver("service", lambda: "first", evaluate_once=True)
+    assert scope["service"] == "first"
+
+    scope.register_resolver("service", lambda: "second", evaluate_once=True, replace=True)
+    assert scope["service"] == "second"
+
+
+def test_unregister():
+    """Test removing a single dependency."""
+    scope = DependencyScope()
+    scope.register_value("service", "value")
+
+    assert scope.unregister("service") is scope
+    assert not scope.contains("service")
+    with pytest.raises(DependencyNotFoundError):
+        scope["service"]
+
+
+def test_unregister_unknown_key():
+    """Test unregistering a key that is not registered."""
+    scope = DependencyScope()
+    with pytest.raises(DependencyNotFoundError):
+        scope.unregister("missing")
+
+
+def test_clear():
+    """Test clearing all registrations."""
+    scope = DependencyScope()
+    scope.register_value("a", 1).register_value("b", 2)
+
+    assert scope.clear() is scope
+    assert not scope.contains("a")
+    assert not scope.contains("b")
+
+    # The scope stays usable after clearing
+    scope.register_value("a", 3)
+    assert scope["a"] == 3
+
+
+def test_resolver_dependencies_without_active_scope():
+    """Test that a resolver resolves its dependencies from its own scope."""
+    scope = DependencyScope()
+    scope.register_value("config", "cfg")
+    scope.register_resolver("service", lambda config=Inject["config"]: f"service({config})")
+
+    assert scope["service"] == "service(cfg)"
+
+
+def test_resolver_without_introspectable_signature():
+    """Test that builtins can be used as resolvers."""
+    scope = DependencyScope()
+    scope.register_resolver("mapping", dict)
+
+    assert scope["mapping"] == {}

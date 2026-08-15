@@ -129,6 +129,45 @@ class TestContextManager:
 
         assert get_active_scopes() == []
 
+    def test_is_active_is_per_context(self):
+        """Test that is_active reflects the scope stack of the calling thread."""
+        scope = DependencyScope()
+        seen = []
+
+        with scope:
+            thread = threading.Thread(target=lambda: seen.append(scope.is_active()))
+            thread.start()
+            thread.join()
+
+        # The scope was never entered in that thread
+        assert seen == [False]
+
+    def test_self_nested_scope_stays_active_until_last_exit(self):
+        """Test that entering the same scope twice needs two exits."""
+        scope = DependencyScope()
+
+        with scope:
+            with scope:
+                assert len(get_active_scopes()) == 2
+            assert scope.is_active()
+
+        assert not scope.is_active()
+
+    def test_out_of_order_exit(self):
+        """Test that a scope exited out of order is removed from its own position."""
+        outer = DependencyScope()
+        inner = DependencyScope()
+
+        outer.__enter__()
+        inner.__enter__()
+        outer.__exit__(None, None, None)
+
+        assert get_active_scopes() == [inner]
+        assert not outer.is_active()
+
+        inner.__exit__(None, None, None)
+        assert get_active_scopes() == []
+
     def test_dependency_scope_convenience_function(self):
         """Test the dependency_scope() convenience function."""
         with dependency_scope() as scope:

@@ -4,7 +4,7 @@ import asyncio
 import contextvars
 import inspect
 import threading
-from collections.abc import Callable, Coroutine, Generator
+from collections.abc import Callable, Coroutine, Generator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, TypeAlias, TypeVar, overload
@@ -57,6 +57,17 @@ def _set_scope_stack(stack: list["DependencyScope"]) -> None:
     _scope_stack.set(tuple(stack))
 
 
+def _get_parameters(func: Callable[..., Any]) -> Mapping[str, inspect.Parameter]:
+    """Get the parameters of a callable.
+
+    Builtins without an introspectable signature are treated as taking no parameters.
+    """
+    try:
+        return inspect.signature(func).parameters
+    except (TypeError, ValueError):
+        return {}
+
+
 class DependencyScope:
     """A dependency scope that can be used as a context manager.
 
@@ -89,30 +100,31 @@ class DependencyScope:
         self._cache: dict[StoreKeyType, Any] = {}
         self._async_resolver_cache: dict[StoreKeyType, bool] = {}  # Cache for async resolver lookups
         self._registry_lock = threading.RLock()
-        self._active = False
+        self._resolution_locks: dict[StoreKeyType, Any] = {}  # Per-key locks for evaluate_once resolvers
 
-    def register_value(self, key: StoreKeyType, value: Any) -> "DependencyScope":
+    def register_value(self, key: StoreKeyType, value: Any, *, replace: bool = False) -> "DependencyScope":
         """Register a static value in this scope.
 
         Args:
             key: The dependency key
             value: The value to register
+            replace: If True, replace an existing registration for this key
 
         Returns:
             Self for method chaining
 
         Raises:
-            DuplicateRegistrationError: If key already exists in this scope
+            DuplicateRegistrationError: If key already exists and replace is False
         """
         with self._registry_lock:
-            self._raise_if_key_already_registered(key)
+            self._prepare_registration(key, replace)
             self._registry[key] = value
             self._cache[key] = value
             self._async_resolver_cache[key] = False  # Values are not async resolvers
         return self
 
     def register_resolver(
-        self, key: StoreKeyType, resolver: StoreResolverType, *, evaluate_once: bool = False
+        self, key: StoreKeyType, resolver: StoreResolverType, *, evaluate_once: bool = False, replace: bool = False
     ) -> "DependencyScope":
         """Register a factory function in this scope.
 
@@ -120,23 +132,29 @@ class DependencyScope:
             key: The dependency key
             resolver: Factory function that creates the dependency
             evaluate_once: If True, cache the result after first evaluation
+            replace: If True, replace an existing registration for this key
 
         Returns:
             Self for method chaining
 
         Raises:
-            DuplicateRegistrationError: If key already exists in this scope
+            DuplicateRegistrationError: If key already exists and replace is False
             CircularDependencyError: If circular dependency detected
         """
         with self._registry_lock:
-            self._raise_if_key_already_registered(key)
+            self._prepare_registration(key, replace)
             self._check_circular_dependencies(key, resolver)
             self._registry[key] = _StoreResolverWithArgs(resolver, evaluate_once)
             self._async_resolver_cache[key] = False  # Sync resolvers are not async
         return self
 
     def register_async_resolver(
-        self, key: StoreKeyType, async_resolver: Callable[..., Coroutine[Any, Any, Any]], *, evaluate_once: bool = False
+        self,
+        key: StoreKeyType,
+        async_resolver: Callable[..., Coroutine[Any, Any, Any]],
+        *,
+        evaluate_once: bool = False,
+        replace: bool = False,
     ) -> "DependencyScope":
         """Register an async factory function.
 
@@ -144,12 +162,13 @@ class DependencyScope:
             key: The dependency key
             async_resolver: Async factory function that creates the dependency
             evaluate_once: If True, cache the result after first evaluation
+            replace: If True, replace an existing registration for this key
 
         Returns:
             Self for method chaining
 
         Raises:
-            DuplicateRegistrationError: If key already exists in this scope
+            DuplicateRegistrationError: If key already exists and replace is False
             CircularDependencyError: If circular dependency detected
         """
 
@@ -168,24 +187,64 @@ class DependencyScope:
                 return asyncio.run(async_resolver(*args, **kwargs))
 
         with self._registry_lock:
-            self._raise_if_key_already_registered(key)
+            self._prepare_registration(key, replace)
             self._check_circular_dependencies(key, async_resolver)
             # Store as an async resolver with a special marker
             self._registry[key] = _AsyncStoreResolverWithArgs(async_resolver, evaluate_once, sync_wrapper)
             self._async_resolver_cache[key] = True  # Cache that this is an async resolver
         return self
 
-    def _raise_if_key_already_registered(self, key: StoreKeyType) -> None:
-        if key in self._registry:
-            # Determine the type of existing registration
-            existing_entry = self._registry[key]
-            if isinstance(existing_entry, _StoreResolverWithArgs):
-                existing_type = "resolver"
-            elif isinstance(existing_entry, _AsyncStoreResolverWithArgs):
-                existing_type = "async_resolver"
-            else:
-                existing_type = "value"
-            raise DuplicateRegistrationError(key, existing_type=existing_type)
+    def unregister(self, key: StoreKeyType) -> "DependencyScope":
+        """Remove a dependency and anything cached for it.
+
+        Args:
+            key: The dependency key
+
+        Returns:
+            Self for method chaining
+
+        Raises:
+            DependencyNotFoundError: If key is not registered in this scope
+        """
+        with self._registry_lock:
+            if key not in self._registry:
+                raise DependencyNotFoundError(key=key, available_keys=list(self._registry.keys()))
+            self._discard(key)
+        return self
+
+    def clear(self) -> "DependencyScope":
+        """Remove all dependencies registered in this scope.
+
+        Returns:
+            Self for method chaining
+        """
+        with self._registry_lock:
+            self._registry.clear()
+            self._cache.clear()
+            self._async_resolver_cache.clear()
+            self._resolution_locks.clear()
+        return self
+
+    def _prepare_registration(self, key: StoreKeyType, replace: bool) -> None:
+        if key not in self._registry:
+            return
+        if not replace:
+            raise DuplicateRegistrationError(key, existing_type=self._registration_type(key))
+        self._discard(key)
+
+    def _registration_type(self, key: StoreKeyType) -> str:
+        existing_entry = self._registry[key]
+        if isinstance(existing_entry, _StoreResolverWithArgs):
+            return "resolver"
+        if isinstance(existing_entry, _AsyncStoreResolverWithArgs):
+            return "async_resolver"
+        return "value"
+
+    def _discard(self, key: StoreKeyType) -> None:
+        self._registry.pop(key, None)
+        self._cache.pop(key, None)
+        self._async_resolver_cache.pop(key, None)
+        self._resolution_locks.pop(key, None)
 
     def _check_circular_dependencies(
         self, new_key: StoreKeyType, new_resolver: StoreResolverType | Callable[..., Coroutine[Any, Any, Any]]
@@ -203,9 +262,8 @@ class DependencyScope:
         self, resolver: StoreResolverType | Callable[..., Coroutine[Any, Any, Any]]
     ) -> set[StoreKeyType]:
         dependencies = set()
-        resolver_signature = inspect.signature(resolver)
 
-        for param in resolver_signature.parameters.values():
+        for param in _get_parameters(resolver).values():
             if param.default is not inspect.Parameter.empty and isinstance(param.default, Inject):
                 dependencies.add(param.default.get_inject_key())
 
@@ -284,43 +342,63 @@ class DependencyScope:
         with self._registry_lock:
             if key in self._cache:
                 return self._cache[key]
-            if key in self._registry:
-                value_or_resolver_with_args = self._registry[key]
+            if key not in self._registry:
+                # Get available keys for suggestions
+                available_keys = list(self._registry.keys())
+                raise DependencyNotFoundError(key=key, available_keys=available_keys)
 
-                result: Any
-                if isinstance(value_or_resolver_with_args, _StoreResolverWithArgs):
-                    resolver_with_args = value_or_resolver_with_args
-                    result = self._resolve(resolver_with_args.resolver)
-                    if resolver_with_args.evaluate_once:
-                        self._cache[key] = result
-                elif isinstance(value_or_resolver_with_args, _AsyncStoreResolverWithArgs):
-                    async_resolver_with_args = value_or_resolver_with_args
-                    result = self._resolve(async_resolver_with_args.sync_wrapper)
-                    if async_resolver_with_args.evaluate_once:
-                        self._cache[key] = result
-                else:
-                    result = value_or_resolver_with_args
+            value_or_resolver_with_args = self._registry[key]
+            resolver: StoreResolverType
+            if isinstance(value_or_resolver_with_args, _StoreResolverWithArgs):
+                resolver = value_or_resolver_with_args.resolver
+                evaluate_once = value_or_resolver_with_args.evaluate_once
+            elif isinstance(value_or_resolver_with_args, _AsyncStoreResolverWithArgs):
+                resolver = value_or_resolver_with_args.sync_wrapper
+                evaluate_once = value_or_resolver_with_args.evaluate_once
+            else:
+                return value_or_resolver_with_args
 
-                return result
-            # Get available keys for suggestions
-            available_keys = list(self._registry.keys())
-            raise DependencyNotFoundError(key=key, available_keys=available_keys)
+            if evaluate_once:
+                resolution_lock = self._resolution_locks.setdefault(key, threading.RLock())
+
+        # Resolvers run outside the registry lock so that resolver code cannot deadlock the scope.
+        if not evaluate_once:
+            return self._resolve(resolver)
+
+        # The per-key lock keeps an evaluate_once resolver to a single execution.
+        with resolution_lock:
+            with self._registry_lock:
+                if key in self._cache:
+                    return self._cache[key]
+            result = self._resolve(resolver)
+            with self._registry_lock:
+                # Skip the cache if the registration was replaced while resolving.
+                if self._registry.get(key) is value_or_resolver_with_args:
+                    self._cache[key] = result
+            return result
 
     def _resolve(self, resolver: StoreResolverType) -> Any:
-        resolver_signature = inspect.signature(resolver)
-        resolver_parameters = resolver_signature.parameters
+        resolver_parameters = _get_parameters(resolver)
         resolver_args: dict[str, Any] = {}
 
         for param_name, param in resolver_parameters.items():
             if param.default is not inspect.Parameter.empty and isinstance(param.default, Inject):
-                try:
-                    resolver_args[param_name] = resolve_dependency(param.default.get_inject_key())
-                except DependencyNotFoundError:
-                    # If the dependency is not found and param has no default, this will cause an error
-                    # Let the resolver handle missing dependencies by falling back to the Inject object
-                    pass
+                resolver_args[param_name] = self._resolve_parameter(param.default.get_inject_key())
 
         return resolver(**resolver_args)
+
+    def _resolve_parameter(self, key: StoreKeyType) -> Any:
+        """Resolve a resolver dependency from active scopes, then from this scope.
+
+        Active scopes come first so that a nested scope keeps overriding, and this
+        scope is the fallback so resolvers also work without an active scope.
+        """
+        try:
+            return resolve_dependency(key)
+        except DependencyNotFoundError:
+            if key in self._registry:
+                return self[key]
+            raise
 
     def __setitem__(self, _key: Any, _value: Any) -> None:
         raise InvalidStoreOperationError(
@@ -351,7 +429,6 @@ class DependencyScope:
         stack = _get_scope_stack()
         new_stack = stack + [self]
         _set_scope_stack(new_stack)
-        self._active = True
         return self
 
     def __exit__(self, _exc_type: Any, _exc_val: Any, _exc_tb: Any) -> None:
@@ -366,7 +443,6 @@ class DependencyScope:
         stack = _get_scope_stack()
         new_stack = stack + [self]
         _set_scope_stack(new_stack)
-        self._active = True
         return self
 
     async def __aexit__(self, _exc_type: Any, _exc_val: Any, _exc_tb: Any) -> None:
@@ -377,22 +453,21 @@ class DependencyScope:
         self._deactivate()
 
     def _deactivate(self) -> None:
-        """Remove this scope from the scope stack and mark it inactive."""
+        """Remove the innermost entry for this scope from the scope stack.
+
+        Scopes exited out of order are removed from their own position, so they
+        stop resolving even when another scope is still on top.
+        """
         stack = _get_scope_stack()
-        if stack and stack[-1] is self:
-            _set_scope_stack(stack[:-1])
-        self._active = False
+        for index in reversed(range(len(stack))):
+            if stack[index] is self:
+                del stack[index]
+                _set_scope_stack(stack)
+                return
 
     def is_active(self) -> bool:
-        """Check if this scope is currently active."""
-        return self._active
-
-    def _reset_for_testing(self) -> None:
-        """Reset the scope state for testing purposes only."""
-        with self._registry_lock:
-            self._registry.clear()
-            self._cache.clear()
-            self._async_resolver_cache.clear()
+        """Check if this scope is on the scope stack of the current context."""
+        return any(scope is self for scope in _get_scope_stack())
 
 
 def resolve_dependency(key: StoreKeyType, additional_scopes: list[DependencyScope] | None = None) -> Any:
